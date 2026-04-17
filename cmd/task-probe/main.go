@@ -1,0 +1,61 @@
+//go:build playwright
+
+package main
+
+import (
+	"flag"
+	"fmt"
+	"log"
+
+	"comic_downloader_go_playwright_stealth/tasks"
+)
+
+const defaultFirefoxUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0"
+
+func main() {
+	url := flag.String("url", "", "url to open")
+	runtimeRoot := flag.String("runtime-root", "runtime", "runtime root")
+	browserPath := flag.String("browser-path", "", "firefox executable path")
+	profileDir := flag.String("profile-dir", "", "selected firefox profile directory")
+	userDataDir := flag.String("user-data-dir", "", "firefox profile directory")
+	userAgent := flag.String("user-agent", defaultFirefoxUserAgent, "browser user agent")
+	locale := flag.String("locale", "en-US", "browser locale for stable testing")
+	timezoneID := flag.String("timezone-id", "Asia/Shanghai", "browser timezone for stable testing")
+	viewportWidth := flag.Int("viewport-width", 1365, "browser viewport width")
+	viewportHeight := flag.Int("viewport-height", 768, "browser viewport height")
+	firefoxUserPrefsJSON := flag.String("firefox-user-prefs-json", "", "Firefox user prefs as JSON")
+	workerID := flag.String("worker-id", "", "worker id for task-scoped profile copy")
+	taskID := flag.String("task-id", "", "task id for task-scoped profile copy")
+	headless := flag.Bool("headless", true, "run browser headless")
+	adblock := flag.Bool("adblock", true, "enable adblock flag in middleware")
+	keepOpen := flag.Bool("keep-open", false, "keep the browser open until the window is closed")
+	flag.Parse()
+
+	req := tasks.BrowserLaunchRequest{
+		URL:                  *url,
+		Headless:             *headless,
+		RuntimeRoot:          *runtimeRoot,
+		BrowserPath:          *browserPath,
+		ProfileDir:           *profileDir,
+		UserDataDir:          *userDataDir,
+		UserAgent:            *userAgent,
+		Locale:               *locale,
+		TimezoneID:           *timezoneID,
+		ViewportWidth:        *viewportWidth,
+		ViewportHeight:       *viewportHeight,
+		FirefoxUserPrefsJSON: *firefoxUserPrefsJSON,
+		Adblock:              *adblock,
+		WorkerID:             *workerID,
+		TaskID:               *taskID,
+		KeepOpen:             *keepOpen,
+	}
+
+	result, err := tasks.RunBrowserRequest(req)
+	if err != nil {
+		log.Fatalf("run browser request: %v", err)
+	}
+	fmt.Println(result.Title)
+	if result.PlaywrightProfileDir != "" {
+		fmt.Println(result.PlaywrightProfileDir)
+	}
+}
