@@ -29,7 +29,7 @@ func NewBrowserProfileManager(workspaceRoot string) BrowserProfileManager {
 	}
 }
 
-// MotherProfileDir returns the project-owned mother profile directory for the browser family.
+// MotherProfileDir returns the project-owned working profile directory for the browser family.
 func (m BrowserProfileManager) MotherProfileDir(browserType BrowserType) string {
 	return m.Paths.BrowserUserDataDir(browserType)
 }
@@ -67,6 +67,39 @@ func (m BrowserProfileManager) TaskVerifyUserData(browserType BrowserType, worke
 // PrepareTaskProfile copies the latest mother profile into a fresh task-scoped temp directory.
 func (m BrowserProfileManager) PrepareTaskProfile(browserType BrowserType, workerID, taskID string) (BrowserTaskProfile, error) {
 	return m.PrepareTaskProfileFromSource(browserType, m.MotherProfileDir(browserType), workerID, taskID)
+}
+
+// RefreshProjectProfileFromSource replaces the project-owned working profile with a fresh copy of sourceDir.
+func (m BrowserProfileManager) RefreshProjectProfileFromSource(browserType BrowserType, sourceDir string) (BrowserProfileRefreshResult, error) {
+	sourceDir = filepath.Clean(strings.TrimSpace(sourceDir))
+	if sourceDir == "" {
+		return BrowserProfileRefreshResult{}, fmt.Errorf("source profile dir is empty")
+	}
+	if _, err := os.Stat(sourceDir); err != nil {
+		return BrowserProfileRefreshResult{}, fmt.Errorf("source profile %q: %w", sourceDir, err)
+	}
+
+	targetDir := filepath.Clean(strings.TrimSpace(m.MotherProfileDir(browserType)))
+	if targetDir == "" {
+		return BrowserProfileRefreshResult{}, fmt.Errorf("target profile dir is empty")
+	}
+	if same, err := sameCanonicalPathStrict(sourceDir, targetDir); err == nil && same {
+		return BrowserProfileRefreshResult{}, fmt.Errorf("source profile %q and target profile %q are the same path", sourceDir, targetDir)
+	}
+
+	if err := os.RemoveAll(targetDir); err != nil {
+		return BrowserProfileRefreshResult{}, fmt.Errorf("clear target profile dir %q: %w", targetDir, err)
+	}
+	if err := copyDir(sourceDir, targetDir); err != nil {
+		_ = os.RemoveAll(targetDir)
+		return BrowserProfileRefreshResult{}, fmt.Errorf("copy source profile to target profile: %w", err)
+	}
+
+	return BrowserProfileRefreshResult{
+		BrowserType:      browserType,
+		SourceProfileDir: sourceDir,
+		TargetProfileDir: targetDir,
+	}, nil
 }
 
 // PreparePlaywrightProfileFromSource copies a selected source profile into a fresh temporary Playwright profile dir.
@@ -171,6 +204,13 @@ type BrowserTaskProfile struct {
 	VerifyUserData   string      `json:"verifyUserData"`
 }
 
+// BrowserProfileRefreshResult describes one refresh of the project-owned working profile.
+type BrowserProfileRefreshResult struct {
+	BrowserType      BrowserType `json:"browserType"`
+	SourceProfileDir string      `json:"sourceProfileDir"`
+	TargetProfileDir string      `json:"targetProfileDir"`
+}
+
 func copyDir(src, dst string) error {
 	srcInfo, err := os.Stat(src)
 	if err != nil {
@@ -246,4 +286,19 @@ func copyFile(src, dst string, mode os.FileMode) error {
 		return err
 	}
 	return nil
+}
+
+func sameCanonicalPathStrict(left, right string) (bool, error) {
+	if strings.TrimSpace(left) == "" || strings.TrimSpace(right) == "" {
+		return false, fmt.Errorf("empty path")
+	}
+	leftAbs, err := filepath.Abs(left)
+	if err != nil {
+		return false, err
+	}
+	rightAbs, err := filepath.Abs(right)
+	if err != nil {
+		return false, err
+	}
+	return strings.EqualFold(filepath.Clean(leftAbs), filepath.Clean(rightAbs)), nil
 }

@@ -92,14 +92,14 @@ func (r BrowserLaunchRequest) UsesTaskProfile() bool {
 // PrepareTaskProfile copies the current mother profile into a task-scoped temporary profile tree.
 func (r BrowserLaunchRequest) PrepareTaskProfile() (projectruntime.BrowserTaskProfile, error) {
 	r = r.Normalize()
-	manager := projectruntime.NewBrowserProfileManager(r.RuntimeRoot)
+	manager := projectruntime.NewBrowserProfileManager(workspaceRootFromRuntimeRoot(r.RuntimeRoot))
 	return manager.PrepareTaskProfileFromSource(projectruntime.BrowserTypeFirefox, r.ProfileDir, r.WorkerID, r.TaskID)
 }
 
 // CleanupTaskProfile removes the task-scoped temporary profile tree.
 func (r BrowserLaunchRequest) CleanupTaskProfile() error {
 	r = r.Normalize()
-	manager := projectruntime.NewBrowserProfileManager(r.RuntimeRoot)
+	manager := projectruntime.NewBrowserProfileManager(workspaceRootFromRuntimeRoot(r.RuntimeRoot))
 	return manager.CleanupTaskProfile(projectruntime.BrowserTypeFirefox, r.WorkerID, r.TaskID)
 }
 
@@ -135,4 +135,12 @@ func (r BrowserLaunchRequest) FirefoxMiddleware() browser.FirefoxMiddleware {
 		WithHeadless(r.Headless).
 		WithAdblock(r.Adblock)
 	return middleware
+}
+
+func workspaceRootFromRuntimeRoot(runtimeRoot string) string {
+	runtimeRoot = filepath.Clean(strings.TrimSpace(runtimeRoot))
+	if runtimeRoot == "" || runtimeRoot == "." {
+		return "."
+	}
+	return filepath.Dir(runtimeRoot)
 }

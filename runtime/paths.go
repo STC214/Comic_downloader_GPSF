@@ -61,8 +61,13 @@ func (p Paths) TaskReportPath(taskID string) string {
 	return filepath.Join(p.TasksRoot, "task-"+taskID, "report.json")
 }
 
-// DefaultFirefoxProfileDir returns the exact Firefox profile directory selected by this project.
+// DefaultFirefoxProfileDir returns the exact project-owned Firefox profile directory used by tasks.
 func DefaultFirefoxProfileDir() string {
+	return filepath.Join("runtime", "browser-profiles", "baseline-userdata")
+}
+
+// DefaultFirefoxProfileSourceDir returns the exact Firefox source profile directory selected on this machine.
+func DefaultFirefoxProfileSourceDir() string {
 	appData := strings.TrimSpace(os.Getenv("APPDATA"))
 	if appData == "" {
 		return ""

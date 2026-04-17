@@ -15,13 +15,14 @@ type ContextData struct {
 
 // FirefoxSession is the runtime handle returned by Open().
 type FirefoxSession struct {
-	Middleware FirefoxMiddleware
-	URL        string
-	Playwright any
-	Browser    any
-	Context    any
-	Page       any
-	closed     chan struct{}
+	Middleware  FirefoxMiddleware
+	URL         string
+	Playwright  any
+	Browser     any
+	Context     any
+	Page        any
+	releaseLock func() error
+	closed      chan struct{}
 }
 
 // LaunchData returns the launch inputs needed by the Playwright-backed implementation.

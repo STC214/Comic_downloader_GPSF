@@ -67,14 +67,14 @@ func NewBrowserPaths(workspaceRoot string) BrowserPaths {
 		BrowserTasksRoot:     filepath.Join(runtimeRoot, "browser-profiles", "tasks"),
 		BrowserVerifyRoot:    filepath.Join(runtimeRoot, "browser-profiles", "verification"),
 		BrowserBaselineRoot:  filepath.Join(runtimeRoot, "browser-profiles", "baseline-userdata"),
-		FirefoxUserDataDir:   filepath.Join(runtimeRoot, "browser-profiles", "firefox"),
+		FirefoxUserDataDir:   filepath.Join(runtimeRoot, "browser-profiles", "baseline-userdata"),
 		FirefoxStealthScript: filepath.Join(runtimeRoot, "firefox_stealth.js"),
 	}
 }
 
 // DefaultFirefoxUserDataDir returns the exact project path used for Firefox userdata.
 func DefaultFirefoxUserDataDir(runtimeRoot string) string {
-	return filepath.Join(normalizeRoot(runtimeRoot), "browser-profiles", "firefox")
+	return filepath.Join(normalizeRoot(runtimeRoot), "browser-profiles", "baseline-userdata")
 }
 
 // DefaultFirefoxExecutablePath returns the exact bundled Firefox executable path.
@@ -187,7 +187,7 @@ func (p BrowserPaths) exactCandidates() []struct {
 		{path: p.BrowserProfilesRoot, match: BrowserPathMatch{Kind: BrowserPathKindBrowserProfiles, Path: p.BrowserProfilesRoot}},
 		{path: p.BrowserTasksRoot, match: BrowserPathMatch{Kind: BrowserPathKindBrowserTasks, Path: p.BrowserTasksRoot}},
 		{path: p.BrowserVerifyRoot, match: BrowserPathMatch{Kind: BrowserPathKindBrowserVerify, Path: p.BrowserVerifyRoot}},
-		{path: p.BrowserBaselineRoot, match: BrowserPathMatch{Kind: BrowserPathKindBrowserBaseline, Path: p.BrowserBaselineRoot}},
+		{path: p.BrowserBaselineRoot, match: BrowserPathMatch{Kind: BrowserPathKindBrowserBaseline, Browser: BrowserTypeFirefox, Path: p.BrowserBaselineRoot}},
 		{path: p.FirefoxUserDataDir, match: BrowserPathMatch{Kind: BrowserPathKindFirefoxUserDataDir, Browser: BrowserTypeFirefox, Path: p.FirefoxUserDataDir}},
 		{path: p.FirefoxStealthScript, match: BrowserPathMatch{Kind: BrowserPathKindFirefoxStealthJS, Browser: BrowserTypeFirefox, Path: p.FirefoxStealthScript}},
 	}

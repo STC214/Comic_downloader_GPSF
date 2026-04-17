@@ -8,7 +8,7 @@ import (
 
 func TestBrowserProfileManagerPreparesAndCleansTaskProfile(t *testing.T) {
 	workspace := t.TempDir()
-	projectMother := filepath.Join(workspace, "runtime", "browser-profiles", "firefox")
+	projectMother := filepath.Join(workspace, "runtime", "browser-profiles", "baseline-userdata")
 	if err := os.MkdirAll(filepath.Join(projectMother, "default"), 0o755); err != nil {
 		t.Fatalf("create project mother dir: %v", err)
 	}
@@ -157,6 +157,38 @@ func TestBrowserProfileManagerPreparesPlaywrightProfileFromSource(t *testing.T) 
 	}
 	if _, err := os.Stat(profile.RootDir); !os.IsNotExist(err) {
 		t.Fatalf("playwright profile root exists after cleanup, stat err = %v", err)
+	}
+}
+
+func TestBrowserProfileManagerRefreshProjectProfileFromSource(t *testing.T) {
+	workspace := t.TempDir()
+	appData := filepath.Join(workspace, "AppData", "Roaming")
+	t.Setenv("APPDATA", appData)
+	t.Setenv("LOCALAPPDATA", filepath.Join(workspace, "AppData", "Local"))
+
+	sourceDir := filepath.Join(appData, "Mozilla", "Firefox", "Profiles", "jo2klram.default-release")
+	if err := os.MkdirAll(filepath.Join(sourceDir, "extensions"), 0o755); err != nil {
+		t.Fatalf("create source dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "prefs.js"), []byte("source-refresh"), 0o644); err != nil {
+		t.Fatalf("write source file: %v", err)
+	}
+
+	manager := NewBrowserProfileManager(workspace)
+	result, err := manager.RefreshProjectProfileFromSource(BrowserTypeFirefox, sourceDir)
+	if err != nil {
+		t.Fatalf("RefreshProjectProfileFromSource() error = %v", err)
+	}
+	wantTarget := filepath.Join(workspace, "runtime", "browser-profiles", "baseline-userdata")
+	if result.TargetProfileDir != wantTarget {
+		t.Fatalf("result.TargetProfileDir = %q, want %q", result.TargetProfileDir, wantTarget)
+	}
+	got, err := os.ReadFile(filepath.Join(wantTarget, "prefs.js"))
+	if err != nil {
+		t.Fatalf("read refreshed prefs.js: %v", err)
+	}
+	if string(got) != "source-refresh" {
+		t.Fatalf("refreshed prefs.js = %q, want %q", string(got), "source-refresh")
 	}
 }
 

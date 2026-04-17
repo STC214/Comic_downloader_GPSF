@@ -10,6 +10,8 @@ import (
 	"sync"
 
 	"github.com/playwright-community/playwright-go"
+
+	projectruntime "comic_downloader_go_playwright_stealth/runtime"
 )
 
 func (m FirefoxMiddleware) toPlaywrightLaunchOptions(opts BrowserSessionOptions) playwright.BrowserTypeLaunchOptions {
@@ -82,8 +84,14 @@ func openFirefoxSession(m FirefoxMiddleware, opts BrowserSessionOptions) (*Firef
 		return nil, fmt.Errorf("stealth script %q: %w", spec.StealthScript.Path, err)
 	}
 
+	releaseLock, err := projectruntime.AcquireBrowserSessionLock(m.RuntimeRoot())
+	if err != nil {
+		return nil, err
+	}
+
 	pw, err := playwright.Run()
 	if err != nil {
+		_ = releaseLock()
 		return nil, fmt.Errorf("start playwright: %w", err)
 	}
 
@@ -91,6 +99,7 @@ func openFirefoxSession(m FirefoxMiddleware, opts BrowserSessionOptions) (*Firef
 	context, err := pw.Firefox.LaunchPersistentContext(spec.UserDataDir, persistentOptions)
 	if err != nil {
 		_ = pw.Stop()
+		_ = releaseLock()
 		return nil, fmt.Errorf("launch firefox: %w", err)
 	}
 
@@ -99,6 +108,7 @@ func openFirefoxSession(m FirefoxMiddleware, opts BrowserSessionOptions) (*Firef
 	}); err != nil {
 		_ = context.Close()
 		_ = pw.Stop()
+		_ = releaseLock()
 		return nil, fmt.Errorf("add stealth init script: %w", err)
 	}
 
@@ -112,6 +122,7 @@ func openFirefoxSession(m FirefoxMiddleware, opts BrowserSessionOptions) (*Firef
 	if err != nil {
 		_ = context.Close()
 		_ = pw.Stop()
+		_ = releaseLock()
 		return nil, fmt.Errorf("create firefox page: %w", err)
 	}
 
@@ -127,17 +138,19 @@ func openFirefoxSession(m FirefoxMiddleware, opts BrowserSessionOptions) (*Firef
 		_ = page.Close()
 		_ = context.Close()
 		_ = pw.Stop()
+		_ = releaseLock()
 		return nil, fmt.Errorf("goto %q: %w", spec.URL, err)
 	}
 
 	return &FirefoxSession{
-		Middleware: m,
-		URL:        spec.URL,
-		Playwright: pw,
-		Browser:    nil,
-		Context:    context,
-		Page:       page,
-		closed:     closed,
+		Middleware:  m,
+		URL:         spec.URL,
+		Playwright:  pw,
+		Browser:     nil,
+		Context:     context,
+		Page:        page,
+		releaseLock: releaseLock,
+		closed:      closed,
 	}, nil
 }
 
@@ -163,6 +176,11 @@ func closeFirefoxSession(s *FirefoxSession) error {
 	}
 	if pw, ok := s.Playwright.(*playwright.Playwright); ok && pw != nil {
 		if err := pw.Stop(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if s.releaseLock != nil {
+		if err := s.releaseLock(); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}

@@ -8,12 +8,12 @@ import (
 func TestBrowserPathsResolveExact(t *testing.T) {
 	paths := NewBrowserPaths("F:/Project/comic_downloader_GO_Playwright_stealth")
 
-	match, ok := paths.ResolveExact("F:/Project/comic_downloader_GO_Playwright_stealth/runtime/browser-profiles/firefox")
+	match, ok := paths.ResolveExact("F:/Project/comic_downloader_GO_Playwright_stealth/runtime/browser-profiles/baseline-userdata")
 	if !ok {
 		t.Fatal("ResolveExact(firefox userdata) = false, want true")
 	}
-	if match.Kind != BrowserPathKindFirefoxUserDataDir {
-		t.Fatalf("match.Kind = %q, want %q", match.Kind, BrowserPathKindFirefoxUserDataDir)
+	if match.Kind != BrowserPathKindBrowserBaseline {
+		t.Fatalf("match.Kind = %q, want %q", match.Kind, BrowserPathKindBrowserBaseline)
 	}
 	if match.Browser != BrowserTypeFirefox {
 		t.Fatalf("match.Browser = %q, want %q", match.Browser, BrowserTypeFirefox)
