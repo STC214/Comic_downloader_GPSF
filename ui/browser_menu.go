@@ -24,7 +24,7 @@ func DefaultBrowserMenuState() BrowserMenuState {
 		ChromiumExecutablePath:   "",
 		ChromiumInstallRoot:      projectruntime.DefaultChromiumInstallDir(paths.Root),
 		PlaywrightDriverDir:      projectruntime.DefaultPlaywrightDriverDir(paths.Root),
-		FirefoxMotherProfileDir:  `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\jo2klram.default-release`,
+		FirefoxMotherProfileDir:  projectruntime.DefaultFirefoxProfileSourceDir(),
 		FirefoxWorkingProfileDir: projectruntime.DefaultFirefoxProfileDir(),
 	}
 }

@@ -36,6 +36,7 @@ Default=1
 	if err := os.MkdirAll(firefoxSource, 0o755); err != nil {
 		t.Fatalf("create source dir: %v", err)
 	}
+	t.Setenv("COMIC_FIREFOX_PROFILE_SOURCE_DIR", firefoxSource)
 
 	paths := NewBrowserPaths(workspace)
 	manager := NewBrowserProfileManager(workspace)
@@ -137,6 +138,7 @@ func TestBrowserProfileManagerPreparesPlaywrightProfileFromSource(t *testing.T) 
 	if err := os.MkdirAll(filepath.Join(sourceDir, "extensions"), 0o755); err != nil {
 		t.Fatalf("create source dir: %v", err)
 	}
+	t.Setenv("COMIC_FIREFOX_PROFILE_SOURCE_DIR", sourceDir)
 	if err := os.WriteFile(filepath.Join(sourceDir, "prefs.js"), []byte("source-playwright"), 0o644); err != nil {
 		t.Fatalf("write source file: %v", err)
 	}
@@ -160,6 +162,27 @@ func TestBrowserProfileManagerPreparesPlaywrightProfileFromSource(t *testing.T) 
 	}
 }
 
+func TestBrowserProfileManagerSourceProfileDirChromium(t *testing.T) {
+	workspace := t.TempDir()
+	localAppData := filepath.Join(workspace, "AppData", "Local")
+	t.Setenv("LOCALAPPDATA", localAppData)
+	t.Setenv("APPDATA", filepath.Join(workspace, "AppData", "Roaming"))
+
+	sourceDir := filepath.Join(localAppData, "Google", "Chrome for Testing", "User Data")
+	if err := os.MkdirAll(filepath.Join(sourceDir, "Default"), 0o755); err != nil {
+		t.Fatalf("create chromium source dir: %v", err)
+	}
+
+	manager := NewBrowserProfileManager(workspace)
+	got, err := manager.SourceProfileDir(BrowserTypeChromium)
+	if err != nil {
+		t.Fatalf("SourceProfileDir(chromium) error = %v", err)
+	}
+	if got != filepath.Clean(sourceDir) {
+		t.Fatalf("SourceProfileDir(chromium) = %q, want %q", got, sourceDir)
+	}
+}
+
 func TestBrowserProfileManagerRefreshProjectProfileFromSource(t *testing.T) {
 	workspace := t.TempDir()
 	appData := filepath.Join(workspace, "AppData", "Roaming")
@@ -170,6 +193,7 @@ func TestBrowserProfileManagerRefreshProjectProfileFromSource(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(sourceDir, "extensions"), 0o755); err != nil {
 		t.Fatalf("create source dir: %v", err)
 	}
+	t.Setenv("COMIC_FIREFOX_PROFILE_SOURCE_DIR", sourceDir)
 	if err := os.WriteFile(filepath.Join(sourceDir, "prefs.js"), []byte("source-refresh"), 0o644); err != nil {
 		t.Fatalf("write source file: %v", err)
 	}
@@ -192,7 +216,7 @@ func TestBrowserProfileManagerRefreshProjectProfileFromSource(t *testing.T) {
 	}
 }
 
-func TestCopyDirSkipsFirefoxLockFiles(t *testing.T) {
+func TestCopyDirCopiesFirefoxLockFiles(t *testing.T) {
 	workspace := t.TempDir()
 	sourceDir := filepath.Join(workspace, "source")
 	dstDir := filepath.Join(workspace, "dst")
@@ -210,8 +234,12 @@ func TestCopyDirSkipsFirefoxLockFiles(t *testing.T) {
 	if err := copyDir(sourceDir, dstDir); err != nil {
 		t.Fatalf("copyDir() error = %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(dstDir, "parent.lock")); !os.IsNotExist(err) {
-		t.Fatalf("parent.lock exists in destination, stat err = %v", err)
+	gotLock, err := os.ReadFile(filepath.Join(dstDir, "parent.lock"))
+	if err != nil {
+		t.Fatalf("read copied parent.lock: %v", err)
+	}
+	if string(gotLock) != "locked" {
+		t.Fatalf("copied parent.lock = %q, want %q", string(gotLock), "locked")
 	}
 	got, err := os.ReadFile(filepath.Join(dstDir, "prefs.js"))
 	if err != nil {

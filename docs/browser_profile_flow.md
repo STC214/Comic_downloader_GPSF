@@ -16,7 +16,7 @@ The browser layer starts from the selected project-owned Firefox working profile
 ## Current defaults
 
 - Browser executable: `C:\Program Files\Mozilla Firefox\firefox.exe`
-- Selected mother profile source for refresh: `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\jo2klram.default-release`
+- Selected mother profile source for refresh: `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\aocfvl86.default-default-3`
 - Selected working profile used by tasks: `runtime/browser-profiles/baseline-userdata`
 - Default User-Agent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0`
 - Default locale: `en-US`
@@ -60,3 +60,19 @@ The goal is to keep the browser run reproducible while still starting from a rea
 - The browser always launches from a temporary directory.
 - Temporary directories are cleaned up at the end of the run.
 - The browser middleware is the single place that owns stealth injection and launch defaults.
+
+## Useful browser self-check pages
+
+These built-in pages are the fastest way to verify which profile a browser is actually using:
+
+- `chrome://version`
+  - Best for Chromium and Chromium-based browsers.
+  - Check `Profile Path` to confirm the exact profile directory in use.
+- `about:support`
+  - Best for Firefox.
+  - Check `Application Basics -> Profile Directory` to confirm the exact profile directory in use.
+- `about:profiles`
+  - Best for Firefox when you want to inspect all available profiles.
+  - It shows the active profile and its `Root Directory` and `Local Directory`.
+
+Use these pages when you need to confirm that a copied temporary profile is really the one being consumed by the browser.

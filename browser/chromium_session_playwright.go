@@ -26,7 +26,7 @@ func (m ChromiumMiddleware) toPlaywrightLaunchOptions(opts BrowserSessionOptions
 			"--disable-infobars",
 			"--no-sandbox",
 			"--disable-features=IsolateOrigins,site-per-process",
-			"--start-maximized", // 關鍵：告知瀏覽器啟動即最大化
+			"--start-maximized", // Request the browser window to start maximized.
 		},
 	}
 }
@@ -55,13 +55,18 @@ func (m ChromiumMiddleware) toPlaywrightPersistentContextOptions(opts BrowserSes
 	contextOptions := playwright.BrowserTypeLaunchPersistentContextOptions{
 		ExecutablePath: playwright.String(m.BrowserPath()),
 		Headless:       playwright.Bool(m.resolveHeadless(opts)),
+		IgnoreDefaultArgs: []string{
+			"--disable-extensions",
+			"--disable-component-extensions-with-background-pages",
+		},
 		Args: []string{
 			"--disable-blink-features=AutomationControlled",
 			"--disable-infobars",
 			"--no-sandbox",
 			"--disable-features=IsolateOrigins,site-per-process",
 			"--disable-web-security",
-			"--start-maximized", // 確保持久化環境也生效
+			"--profile-directory=Default",
+			"--start-maximized", // Keep the persistent launch maximized as well.
 		},
 	}
 
@@ -163,7 +168,7 @@ func openChromiumSession(m ChromiumMiddleware, opts BrowserSessionOptions) (*Chr
 		targetURL = m.URL()
 	}
 
-	// 模擬導航與行為行為加固
+	// Navigate first, then apply a small amount of post-load interaction noise.
 	if _, err := page.Goto(targetURL, playwright.PageGotoOptions{
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 	}); err != nil {
@@ -174,7 +179,7 @@ func openChromiumSession(m ChromiumMiddleware, opts BrowserSessionOptions) (*Chr
 		return nil, fmt.Errorf("goto %q: %w", targetURL, err)
 	}
 
-	// 行為加固：增加隨機延遲與微小滑鼠移動
+	// Add a small amount of interaction noise after navigation.
 	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < 3; i++ {
 		_ = page.Mouse().Move(float64(100+rand.Intn(400)), float64(100+rand.Intn(400)))

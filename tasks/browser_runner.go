@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -35,10 +36,12 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 	if strings.TrimSpace(req.URL) == "" {
 		return BrowserRunResult{}, fmt.Errorf("browser url is empty")
 	}
+
 	manager := projectruntime.NewBrowserProfileManager(workspaceRootFromRuntimeRoot(req.RuntimeRoot))
 	var cleanupProfile func()
 	sourceProfileDir := ""
 	activeProfileDir := ""
+
 	if req.UsesTaskProfile() {
 		profile, err := req.PrepareTaskProfile()
 		if err != nil {
@@ -51,7 +54,7 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 			_ = req.CleanupTaskProfile()
 		}
 	} else {
-		profile, err := manager.PreparePlaywrightProfileFromSource(projectruntime.BrowserTypeFirefox, req.ProfileDir)
+		profile, err := manager.PreparePlaywrightProfileFromSource(projectruntime.BrowserType(req.BrowserType), req.ProfileDir)
 		if err != nil {
 			return BrowserRunResult{}, err
 		}
@@ -62,16 +65,17 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 			_ = manager.CleanupPlaywrightProfile(profile)
 		}
 	}
+
 	if sourceProfileDir != "" || activeProfileDir != "" {
 		fmt.Printf("profile flow: source=%s temp=%s output=%s\n", sourceProfileDir, activeProfileDir, req.OutputDir)
+		logBrowserProfileAudit(req.BrowserType, sourceProfileDir, activeProfileDir)
 	}
 
 	if req.Progress != nil {
 		req.Progress(zeri.DownloadProgress{Fraction: 0.02, Phase: "启动", Message: "准备"})
 	}
 
-	middleware := req.FirefoxMiddleware()
-	session, err := middleware.Open(req.BrowserOptions())
+	session, err := openTaskBrowserSession(req)
 	if err != nil {
 		if cleanupProfile != nil {
 			cleanupProfile()
@@ -150,6 +154,33 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 	}, nil
 }
 
+func openTaskBrowserSession(req BrowserLaunchRequest) (taskBrowserSession, error) {
+	switch projectruntime.BrowserType(req.BrowserType) {
+	case projectruntime.BrowserTypeChromium:
+		session, err := req.ChromiumMiddleware().Open(req.BrowserOptions())
+		if err != nil {
+			return nil, err
+		}
+		return session, nil
+	default:
+		session, err := req.FirefoxMiddleware().Open(req.BrowserOptions())
+		if err != nil {
+			return nil, err
+		}
+		return session, nil
+	}
+}
+
+type taskBrowserSession interface {
+	Close() error
+	Title() (string, error)
+	WaitClosed() error
+	PageURL() string
+	Content() (string, error)
+	Goto(string) error
+	ClickText(string) error
+}
+
 func absolutePathOrClean(path string) string {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -175,5 +206,54 @@ func progressSpan(cb func(zeri.DownloadProgress), start, span float64) func(zeri
 		}
 		update.Fraction = start + span*update.Fraction
 		cb(update)
+	}
+}
+
+func logBrowserProfileAudit(browserType, sourceRoot, tempRoot string) {
+	sourceRoot = filepath.Clean(strings.TrimSpace(sourceRoot))
+	tempRoot = filepath.Clean(strings.TrimSpace(tempRoot))
+	if sourceRoot == "" || tempRoot == "" {
+		return
+	}
+	fmt.Printf("%s profile source: %s\n", browserType, sourceRoot)
+	fmt.Printf("%s profile temp:   %s\n", browserType, tempRoot)
+	paths := []string{
+		"prefs.js",
+		"extensions.json",
+		"addons.json",
+		"addonStartup.json.lz4",
+		"parent.lock",
+		filepath.Join("Default", "Preferences"),
+		filepath.Join("Default", "Secure Preferences"),
+		filepath.Join("Default", "Extensions"),
+		filepath.Join("Default", "Local Extension Settings"),
+		filepath.Join("Default", "Extension Rules"),
+		filepath.Join("Default", "Extension Scripts"),
+		filepath.Join("Default", "Extension State"),
+		filepath.Join("extensions"),
+		filepath.Join("browser-extension-data"),
+		filepath.Join("storage"),
+		filepath.Join("sessionstore-backups"),
+	}
+	for _, rel := range paths {
+		logProfilePathAudit(browserType+" source", filepath.Join(sourceRoot, rel))
+		logProfilePathAudit(browserType+" temp", filepath.Join(tempRoot, rel))
+	}
+}
+
+func logProfilePathAudit(label, path string) {
+	info, err := os.Stat(path)
+	switch {
+	case err == nil && info.IsDir():
+		entries, readErr := os.ReadDir(path)
+		if readErr != nil {
+			fmt.Printf("%s dir: %s (read error: %v)\n", label, path, readErr)
+			return
+		}
+		fmt.Printf("%s dir: %s (entries=%d)\n", label, path, len(entries))
+	case err == nil:
+		fmt.Printf("%s file: %s (size=%d)\n", label, path, info.Size())
+	default:
+		fmt.Printf("%s missing: %s (%v)\n", label, path, err)
 	}
 }

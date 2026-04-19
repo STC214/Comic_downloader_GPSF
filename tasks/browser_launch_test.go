@@ -47,3 +47,26 @@ func TestBrowserLaunchRequestBuildsMiddleware(t *testing.T) {
 		t.Fatalf("spec.FirefoxUserPrefs = %#v", spec.FirefoxUserPrefs)
 	}
 }
+
+func TestBrowserLaunchRequestDefaultsChromium(t *testing.T) {
+	workspace := t.TempDir()
+	req := BrowserLaunchRequest{
+		URL:         "https://example.com",
+		BrowserType: "chromium",
+		RuntimeRoot: filepath.Join(workspace, "runtime"),
+	}
+	req = req.Normalize()
+	if req.BrowserType != "chromium" {
+		t.Fatalf("BrowserType = %q, want chromium", req.BrowserType)
+	}
+	wantProfile := filepath.Clean(`C:\Users\stc52\AppData\Local\Google\Chrome for Testing\User Data`)
+	if req.ProfileDir != wantProfile {
+		t.Fatalf("ProfileDir = %q, want %q", req.ProfileDir, wantProfile)
+	}
+	if req.UserDataDir != wantProfile {
+		t.Fatalf("UserDataDir = %q, want %q", req.UserDataDir, wantProfile)
+	}
+	if req.BrowserPath != "" {
+		t.Fatalf("BrowserPath = %q, want empty and resolved later", req.BrowserPath)
+	}
+}

@@ -1,13 +1,14 @@
-/* Chrome Stealth Final 加固版 
-   集成功能：WebDriver 深度抹除 + 原型鏈清理 + isTrusted 劫持 + Shadow DOM 穿透點擊 + 窗口屬性偽裝
+/* Chrome Stealth Final hardened version
+   Integrated features: deep WebDriver removal, prototype cleanup, isTrusted patching,
+   Shadow DOM click traversal, and window property masking.
 */
 (() => {
-    // 1. 核心：深度抹除 WebDriver 與自動化特徵
+    // 1. Core: deeply remove WebDriver and automation fingerprints.
     const maskWebDriver = () => {
         try {
             const proto = Navigator.prototype;
-            
-            // 徹底刪除原型上的 webdriver
+
+            // Remove webdriver from the prototype chain.
             delete proto.webdriver;
             
             Object.defineProperty(proto, 'webdriver', {
@@ -16,10 +17,10 @@
                 configurable: false
             });
 
-            // 偽裝 window.outerHeight/Width (防止 Headless 檢測)
-            // 如果是在無頭模式下，outerHeight 通常等於 innerHeight，這是不正常的
+            // Mask window.outerHeight/Width to avoid headless detection.
+            // In headless mode, outerHeight often matches innerHeight, which looks suspicious.
             if (window.outerHeight <= window.innerHeight) {
-                const decorationHeight = 85; // 模擬標題欄和地址欄高度
+                const decorationHeight = 85; // Simulate the title bar and address bar height.
                 Object.defineProperty(window, 'outerHeight', {
                     get: () => window.innerHeight + decorationHeight,
                     configurable: true
@@ -32,7 +33,7 @@
         } catch (e) {}
     };
 
-    // 2. 模擬真實 Chrome 專有對象
+    // 2. Simulate real Chrome-specific objects.
     const maskChrome = () => {
         window.chrome = {
             app: {
@@ -56,7 +57,7 @@
         };
     };
 
-    // 3. 插件與硬體原型鏈深度偽裝 (解決 PluginArray failed)
+    // 3. Deeply mask plugin and hardware-related prototypes.
     const maskHardware = () => {
         const originalQuery = window.navigator.permissions.query;
         window.navigator.permissions.query = (parameters) => (
@@ -105,7 +106,7 @@
         Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en-US', 'en'], configurable: true });
     };
 
-    // 4. 事件可信度偽裝 (劫持 isTrusted)
+    // 4. Event trust masking (patch isTrusted).
     const maskEvents = () => {
         const originalAddEventListener = Element.prototype.addEventListener;
         Element.prototype.addEventListener = function (type, listener, options) {
@@ -121,10 +122,10 @@
         };
     };
 
-    // 5. 穿透型 Cloudflare Turnstile 自動點擊器 (核心加固：支持 Shadow DOM)
+    // 5. Traversal-style Cloudflare Turnstile auto-clicker (supports Shadow DOM).
     const cloudflareClicker = () => {
         const findAndClick = (root) => {
-            // 擴展選擇器
+            // Extended selector set.
             const selectors = [
                 'input[type=checkbox]', 
                 '#challenge-stage input', 
@@ -134,14 +135,14 @@
             
             for (let s of selectors) {
                 const node = root.querySelector(s);
-                // 必須是可見元素
+                // It must be visible.
                 if (node && node.offsetWidth > 0 && node.offsetHeight > 0) {
                     node.click();
                     return true;
                 }
             }
 
-            // 遞歸進入 Shadow Root (CF 驗證碼的核心藏匿地)
+            // Recurse into Shadow Roots.
             const allElements = root.querySelectorAll('*');
             for (let el of allElements) {
                 if (el.shadowRoot && findAndClick(el.shadowRoot)) {
@@ -151,22 +152,22 @@
             return false;
         };
 
-        // 提高檢查頻率至 500ms
+        // Check every 500ms.
         setInterval(() => {
             if (!findAndClick(document)) {
-                // 嘗試處理同源 iframe
+                // Try same-origin iframes.
                 document.querySelectorAll('iframe').forEach(ifr => {
                     try {
                         if (ifr.contentDocument) findAndClick(ifr.contentDocument);
                     } catch (e) {
-                        // 跨域 iframe 忽略，交由行為模擬處理
+                        // Ignore cross-origin iframes.
                     }
                 });
             }
         }, 500);
     };
 
-    // 6. 清理 Playwright 殘留特徵
+    // 6. Clean Playwright residue.
     const cleanup = () => {
         try {
             delete window.__playwright;
@@ -175,7 +176,7 @@
         } catch (e) {}
     };
 
-    // 執行補丁
+    // Apply the patch.
     maskWebDriver();
     maskChrome();
     maskHardware();

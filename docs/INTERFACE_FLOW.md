@@ -50,7 +50,7 @@ Each task writes files under `runtime/`:
 - The browser session boundary uses Playwright persistent context with a copied temporary profile directory.
 - Browser middleware owns stealth injection, Firefox user prefs, and launch defaults.
 - Firefox defaults to `C:\Program Files\Mozilla Firefox\firefox.exe`.
-- Firefox profile selection defaults to `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\jo2klram.default-release`.
+- Firefox profile selection defaults to `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\aocfvl86.default-default-3`.
 - The fixed Firefox User-Agent is `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0`.
 - The `task-probe` CLI is the current browser smoke test entry point.
 - The `zeri` summary/reader contract is documented in [`docs/zeri_flow_rules.md`](zeri_flow_rules.md).
@@ -69,3 +69,16 @@ Each task writes files under `runtime/`:
 - Firefox tasks and probes use `runtime/firefox_stealth.js`.
 - The browser layer also handles `keep-open` so the run can wait until the browser window is manually closed.
 - Task output and logs still live under `runtime/` as before.
+
+## Browser verification pages
+
+When you need to verify the exact profile directory used by a run, use these built-in pages:
+
+- `chrome://version`
+  - Use this in Chromium or Chromium-based probes.
+  - Confirm the `Profile Path` field points at the expected temporary task profile.
+- `about:support`
+  - Use this in Firefox probes.
+  - Confirm `Application Basics -> Profile Directory` points at the expected temporary task profile.
+- `about:profiles`
+  - Use this in Firefox if you want to inspect all profiles and the currently active one.

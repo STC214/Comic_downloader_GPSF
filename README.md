@@ -44,7 +44,7 @@ go run ./cmd/comic-downloader --workspace-root .
 ## 说明
 
 - Firefox 默认路径是 `C:\Program Files\Mozilla Firefox\firefox.exe`。
-- 当前选定的 Firefox 母配置默认是 `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\jo2klram.default-release`。
+- 当前选定的 Firefox 母配置默认是 `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\aocfvl86.default-default-3`。
 - 默认 Firefox User-Agent 是 `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0`。
 - 浏览器中间件会先把选定子配置复制到临时 Playwright profile，再用这个临时 profile 启动 Firefox，运行结束后删除临时目录。
 - 浏览器中间件会在任何页面打开前注入 `runtime/firefox_stealth.js`。
@@ -52,3 +52,17 @@ go run ./cmd/comic-downloader --workspace-root .
 - 浏览器 profile 隔离和 Firefox 母配置流程见 [`docs/browser_profile_flow.md`](docs/browser_profile_flow.md)。
 - 当前浏览器接口约定见 [`docs/INTERFACE_FLOW.md`](docs/INTERFACE_FLOW.md)。
 - 当前 `zeri` 的 summary/reader 规则见 [`docs/zeri_flow_rules.md`](docs/zeri_flow_rules.md)。
+
+## 浏览器自检页
+
+下面三个页面最适合用来确认浏览器当前正在使用的配置文件路径：
+
+- `chrome://version`
+  - 适合 Chromium / Chrome for Testing。
+  - 打开后查看 `Profile Path`。
+- `about:support`
+  - 适合 Firefox。
+  - 打开后查看 `Application Basics -> Profile Directory`。
+- `about:profiles`
+  - 适合 Firefox。
+  - 可以查看所有 profile，并确认当前正在使用的那个 profile。

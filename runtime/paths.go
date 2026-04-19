@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // Paths describes the runtime directory layout used by the UI.
@@ -68,9 +67,5 @@ func DefaultFirefoxProfileDir() string {
 
 // DefaultFirefoxProfileSourceDir returns the exact Firefox source profile directory selected on this machine.
 func DefaultFirefoxProfileSourceDir() string {
-	appData := strings.TrimSpace(os.Getenv("APPDATA"))
-	if appData == "" {
-		return ""
-	}
-	return filepath.Join(appData, "Mozilla", "Firefox", "Profiles", "jo2klram.default-release")
+	return `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\aocfvl86.default-default-3`
 }

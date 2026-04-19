@@ -6,6 +6,7 @@ import (
 )
 
 const defaultFirefoxExecutablePath = `C:\Program Files\Mozilla Firefox\firefox.exe`
+const defaultChromiumProfileSourceDir = `C:\Users\stc52\AppData\Local\Google\Chrome for Testing\User Data`
 
 // BrowserType identifies the project-managed browser family.
 type BrowserType string
@@ -82,6 +83,11 @@ func DefaultFirefoxUserDataDir(runtimeRoot string) string {
 // DefaultChromiumInstallDir returns the project-default Chromium install directory.
 func DefaultChromiumInstallDir(runtimeRoot string) string {
 	return filepath.Join(normalizeRoot(runtimeRoot), "playwright-browsers", "chromium")
+}
+
+// DefaultChromiumProfileSourceDir returns the default Chromium mother profile directory.
+func DefaultChromiumProfileSourceDir() string {
+	return defaultChromiumProfileSourceDir
 }
 
 // DefaultFirefoxInstallDir returns the project-default Firefox install directory.

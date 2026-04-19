@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -15,9 +16,11 @@ const defaultFirefoxUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:14
 // BrowserLaunchRequest is the task-level browser input that flows into the middleware.
 type BrowserLaunchRequest struct {
 	URL                  string                      `json:"url"`
+	BrowserType          string                      `json:"browserType"`
 	Headless             bool                        `json:"headless"`
 	RuntimeRoot          string                      `json:"runtimeRoot"`
 	BrowserPath          string                      `json:"browserPath"`
+	BrowserInstallDir    string                      `json:"browserInstallDir"`
 	DriverDir            string                      `json:"driverDir"`
 	ProfileDir           string                      `json:"profileDir"`
 	UserDataDir          string                      `json:"userDataDir"`
@@ -42,27 +45,38 @@ func (r BrowserLaunchRequest) Normalize() BrowserLaunchRequest {
 	if strings.TrimSpace(r.RuntimeRoot) == "" {
 		r.RuntimeRoot = "runtime"
 	}
-	if strings.TrimSpace(r.BrowserPath) == "" {
-		r.BrowserPath = projectruntime.DefaultFirefoxExecutablePath(r.RuntimeRoot)
+	r.URL = strings.TrimSpace(r.URL)
+	r.BrowserType = normalizeBrowserType(r.BrowserType)
+	r.BrowserInstallDir = strings.TrimSpace(r.BrowserInstallDir)
+	if r.BrowserInstallDir == "" && r.BrowserType == string(projectruntime.BrowserTypeChromium) {
+		r.BrowserInstallDir = strings.TrimSpace(os.Getenv("PLAYWRIGHT_BROWSERS_PATH"))
 	}
 	if strings.TrimSpace(r.DriverDir) == "" {
-		r.DriverDir = projectruntime.DefaultPlaywrightDriverDir(r.RuntimeRoot)
+		if r.BrowserType == string(projectruntime.BrowserTypeChromium) && strings.TrimSpace(r.BrowserInstallDir) != "" {
+			r.DriverDir = filepath.Join(r.BrowserInstallDir, "driver")
+		} else {
+			r.DriverDir = projectruntime.DefaultPlaywrightDriverDir(r.RuntimeRoot)
+		}
 	}
-	r.URL = strings.TrimSpace(r.URL)
 	selectedProfileDir := strings.TrimSpace(r.ProfileDir)
 	userDataDir := strings.TrimSpace(r.UserDataDir)
 	r.WorkerID = strings.TrimSpace(r.WorkerID)
 	r.TaskID = strings.TrimSpace(r.TaskID)
 	r.UserAgent = strings.TrimSpace(r.UserAgent)
 	if r.UserAgent == "" {
-		r.UserAgent = defaultFirefoxUserAgent
+		r.UserAgent = defaultUserAgentForBrowserType(r.BrowserType)
+	}
+	if strings.TrimSpace(r.BrowserPath) == "" {
+		if r.BrowserType != string(projectruntime.BrowserTypeChromium) {
+			r.BrowserPath = defaultExecutablePathForBrowserType(r.RuntimeRoot, r.BrowserType)
+		}
 	}
 	if selectedProfileDir != "" {
 		r.ProfileDir = filepath.Clean(selectedProfileDir)
 	} else if userDataDir != "" {
 		r.ProfileDir = filepath.Clean(userDataDir)
 	} else {
-		r.ProfileDir = projectruntime.DefaultFirefoxProfileDir()
+		r.ProfileDir = defaultProfileDirForBrowserType(r.BrowserType)
 	}
 	if userDataDir != "" {
 		r.UserDataDir = filepath.Clean(userDataDir)
@@ -99,29 +113,30 @@ func (r BrowserLaunchRequest) UsesTaskProfile() bool {
 func (r BrowserLaunchRequest) PrepareTaskProfile() (projectruntime.BrowserTaskProfile, error) {
 	r = r.Normalize()
 	manager := projectruntime.NewBrowserProfileManager(workspaceRootFromRuntimeRoot(r.RuntimeRoot))
-	return manager.PrepareTaskProfileFromSource(projectruntime.BrowserTypeFirefox, r.ProfileDir, r.WorkerID, r.TaskID)
+	return manager.PrepareTaskProfileFromSource(projectruntime.BrowserType(r.BrowserType), r.ProfileDir, r.WorkerID, r.TaskID)
 }
 
 // CleanupTaskProfile removes the task-scoped temporary profile tree.
 func (r BrowserLaunchRequest) CleanupTaskProfile() error {
 	r = r.Normalize()
 	manager := projectruntime.NewBrowserProfileManager(workspaceRootFromRuntimeRoot(r.RuntimeRoot))
-	return manager.CleanupTaskProfile(projectruntime.BrowserTypeFirefox, r.WorkerID, r.TaskID)
+	return manager.CleanupTaskProfile(projectruntime.BrowserType(r.BrowserType), r.WorkerID, r.TaskID)
 }
 
 // BrowserOptions converts the request into browser-layer launch options.
 func (r BrowserLaunchRequest) BrowserOptions() browser.BrowserSessionOptions {
 	return browser.BrowserSessionOptions{
-		URL:              r.URL,
-		Headless:         browser.HeadlessPtr(r.Headless),
-		DriverDir:        r.DriverDir,
-		ProfileDir:       r.ProfileDir,
-		UserAgent:        r.UserAgent,
-		Locale:           r.Locale,
-		TimezoneID:       r.TimezoneID,
-		ViewportWidth:    r.ViewportWidth,
-		ViewportHeight:   r.ViewportHeight,
-		FirefoxUserPrefs: r.FirefoxUserPrefs,
+		URL:               r.URL,
+		Headless:          browser.HeadlessPtr(r.Headless),
+		DriverDir:         r.DriverDir,
+		ProfileDir:        r.ProfileDir,
+		BrowserInstallDir: r.BrowserInstallDir,
+		UserAgent:         r.UserAgent,
+		Locale:            r.Locale,
+		TimezoneID:        r.TimezoneID,
+		ViewportWidth:     r.ViewportWidth,
+		ViewportHeight:    r.ViewportHeight,
+		FirefoxUserPrefs:  r.FirefoxUserPrefs,
 	}
 }
 
@@ -131,6 +146,7 @@ func (r BrowserLaunchRequest) FirefoxMiddleware() browser.FirefoxMiddleware {
 	middleware := browser.NewFirefoxMiddleware(r.URL).
 		WithRuntimeRoot(r.RuntimeRoot).
 		WithBrowserPath(r.BrowserPath).
+		WithBrowserInstallDir(r.BrowserInstallDir).
 		WithDriverDir(r.DriverDir).
 		WithProfileDir(r.ProfileDir).
 		WithUserDataDir(r.UserDataDir).
@@ -144,6 +160,65 @@ func (r BrowserLaunchRequest) FirefoxMiddleware() browser.FirefoxMiddleware {
 		WithHeadless(r.Headless).
 		WithAdblock(r.Adblock)
 	return middleware
+}
+
+// ChromiumMiddleware builds the chromium browser middleware from the task-level request.
+func (r BrowserLaunchRequest) ChromiumMiddleware() browser.ChromiumMiddleware {
+	r = r.Normalize()
+	middleware := browser.NewChromiumMiddleware(r.URL).
+		WithRuntimeRoot(r.RuntimeRoot).
+		WithBrowserPath(r.BrowserPath).
+		WithBrowserInstallDir(r.BrowserInstallDir).
+		WithDriverDir(r.DriverDir).
+		WithProfileDir(r.ProfileDir).
+		WithUserDataDir(r.UserDataDir).
+		WithUserAgent(r.UserAgent).
+		WithLocale(r.Locale).
+		WithTimezoneID(r.TimezoneID).
+		WithViewport(r.ViewportWidth, r.ViewportHeight).
+		WithDownloadRoot(r.DownloadRoot).
+		WithOutputDir(r.OutputDir).
+		WithHeadless(r.Headless).
+		WithAdblock(r.Adblock)
+	return middleware
+}
+
+func normalizeBrowserType(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", string(projectruntime.BrowserTypeFirefox):
+		return string(projectruntime.BrowserTypeFirefox)
+	case string(projectruntime.BrowserTypeChromium):
+		return string(projectruntime.BrowserTypeChromium)
+	default:
+		return string(projectruntime.BrowserTypeFirefox)
+	}
+}
+
+func defaultProfileDirForBrowserType(browserType string) string {
+	switch browserType {
+	case string(projectruntime.BrowserTypeChromium):
+		return projectruntime.DefaultChromiumProfileSourceDir()
+	default:
+		return projectruntime.DefaultFirefoxProfileDir()
+	}
+}
+
+func defaultExecutablePathForBrowserType(runtimeRoot, browserType string) string {
+	switch browserType {
+	case string(projectruntime.BrowserTypeChromium):
+		return ""
+	default:
+		return projectruntime.DefaultFirefoxExecutablePath(runtimeRoot)
+	}
+}
+
+func defaultUserAgentForBrowserType(browserType string) string {
+	switch browserType {
+	case string(projectruntime.BrowserTypeChromium):
+		return "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Chrome/149.0"
+	default:
+		return defaultFirefoxUserAgent
+	}
 }
 
 func workspaceRootFromRuntimeRoot(runtimeRoot string) string {

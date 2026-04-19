@@ -15,7 +15,7 @@ func TestBrowserProfileMiddlewareClosesBrowserAndCopiesProfile(t *testing.T) {
 	t.Setenv("APPDATA", appData)
 	t.Setenv("LOCALAPPDATA", filepath.Join(workspace, "AppData", "Local"))
 
-	sourceDir := filepath.Join(appData, "Mozilla", "Firefox", "Profiles", "jo2klram.default-release")
+	sourceDir := filepath.Join(appData, "Mozilla", "Firefox", "Profiles", "aocfvl86.default-default-3")
 	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
 		t.Fatalf("create source dir: %v", err)
 	}
@@ -26,11 +26,12 @@ func TestBrowserProfileMiddlewareClosesBrowserAndCopiesProfile(t *testing.T) {
 [Profile0]
 Name=default
 IsRelative=1
-Path=Profiles/jo2klram.default-release
+Path=Profiles/aocfvl86.default-default-3
 Default=1
 `), 0o644); err != nil {
 		t.Fatalf("write profiles.ini: %v", err)
 	}
+	t.Setenv("COMIC_FIREFOX_PROFILE_SOURCE_DIR", sourceDir)
 	if err := os.WriteFile(filepath.Join(sourceDir, "prefs.js"), []byte("source-profile"), 0o644); err != nil {
 		t.Fatalf("write source prefs.js: %v", err)
 	}

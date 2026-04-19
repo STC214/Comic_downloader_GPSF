@@ -39,6 +39,8 @@ func (m BrowserProfileManager) SourceProfileDir(browserType BrowserType) (string
 	switch browserType {
 	case BrowserTypeFirefox:
 		return m.Source.ResolveFirefox()
+	case BrowserTypeChromium:
+		return m.Source.ResolveChromium()
 	default:
 		return "", fmt.Errorf("unsupported browser type %q", browserType)
 	}
@@ -227,9 +229,6 @@ func copyDir(src, dst string) error {
 		return err
 	}
 	for _, entry := range entries {
-		if shouldSkipProfileCopyEntry(entry.Name()) {
-			continue
-		}
 		srcPath := filepath.Join(src, entry.Name())
 		dstPath := filepath.Join(dst, entry.Name())
 		info, err := entry.Info()
@@ -252,15 +251,6 @@ func copyDir(src, dst string) error {
 		}
 	}
 	return nil
-}
-
-func shouldSkipProfileCopyEntry(name string) bool {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "parent.lock", "lock":
-		return true
-	default:
-		return false
-	}
 }
 
 func copyFile(src, dst string, mode os.FileMode) error {

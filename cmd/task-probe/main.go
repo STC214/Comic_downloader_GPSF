@@ -14,10 +14,13 @@ const defaultFirefoxUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:14
 
 func main() {
 	url := flag.String("url", "", "url to open")
+	browserType := flag.String("browser-type", "firefox", "browser type to use: firefox or chromium")
 	runtimeRoot := flag.String("runtime-root", "runtime", "runtime root")
-	browserPath := flag.String("browser-path", "", "firefox executable path")
-	profileDir := flag.String("profile-dir", "", "selected firefox profile directory")
-	userDataDir := flag.String("user-data-dir", "", "firefox profile directory")
+	browserPath := flag.String("browser-path", "", "browser executable path")
+	browsersPath := flag.String("browsers-path", "", "browser install root")
+	driverDir := flag.String("driver-dir", "", "playwright driver directory")
+	profileDir := flag.String("profile-dir", "", "selected browser profile directory")
+	userDataDir := flag.String("user-data-dir", "", "browser profile directory")
 	userAgent := flag.String("user-agent", defaultFirefoxUserAgent, "browser user agent")
 	locale := flag.String("locale", "en-US", "browser locale for stable testing")
 	timezoneID := flag.String("timezone-id", "Asia/Shanghai", "browser timezone for stable testing")
@@ -33,9 +36,12 @@ func main() {
 
 	req := tasks.BrowserLaunchRequest{
 		URL:                  *url,
+		BrowserType:          *browserType,
 		Headless:             *headless,
 		RuntimeRoot:          *runtimeRoot,
 		BrowserPath:          *browserPath,
+		BrowserInstallDir:    *browsersPath,
+		DriverDir:            *driverDir,
 		ProfileDir:           *profileDir,
 		UserDataDir:          *userDataDir,
 		UserAgent:            *userAgent,

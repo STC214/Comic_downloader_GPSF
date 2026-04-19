@@ -1,26 +1,26 @@
 /* Firefox Stealth Final Version v2.1
-   针对 Cloudflare (CF) 与主流指纹检测站点优化
+   Optimized for Cloudflare (CF) and mainstream fingerprint-detection sites.
 */
 (() => {
-    // 1. 深度拦截 WebDriver (采用原型链锁定方案)
+    // 1. Deeply intercept WebDriver using a prototype-chain lock strategy.
     const maskWebDriver = () => {
         try {
             const proto = Navigator.prototype;
-            // 彻底删除原生定义并锁定
+            // Remove the native definition and lock the replacement.
             delete proto.webdriver;
             Object.defineProperty(proto, 'webdriver', {
                 get: () => false,
                 enumerable: true,
                 configurable: false
             });
-            // 清理直接挂在 navigator 上的属性
+            // Clear any property attached directly to navigator.
             if (Object.getOwnPropertyDescriptor(navigator, 'webdriver')) {
                 delete navigator.webdriver;
             }
         } catch (e) {}
     };
 
-    // 2. 插件数组伪装 (模拟真实 Firefox 的 PluginArray 结构)
+    // 2. Mask the plugin array to resemble a real Firefox PluginArray.
     const maskPlugins = () => {
         try {
             const mockPlugins = [
@@ -48,7 +48,7 @@
                 refresh: { value: () => {}, writable: false, enumerable: true }
             });
 
-            // 整体覆盖
+            // Override the navigator.plugins object as a whole.
             Object.defineProperty(navigator, 'plugins', {
                 get: () => fakePlugins,
                 enumerable: true,
@@ -57,7 +57,7 @@
         } catch (e) {}
     };
 
-    // 3. 基础环境伪装 (语言、平台、硬件并发)
+    // 3. Mask basic environment signals such as language, platform, and hardware concurrency.
     const maskEnvironment = () => {
         try {
             Object.defineProperty(navigator, 'languages', { get: () => ['zh-CN', 'zh', 'en-US', 'en'], configurable: true });
@@ -67,22 +67,22 @@
         } catch (e) {}
     };
 
-    // 4. 清理 Playwright 和自动化残留标记
+    // 4. Remove Playwright and automation residue markers.
     const cleanAutomationTraces = () => {
         try {
             delete window.__playwright;
             delete window.__pw_cleanup;
             delete window.__PW_inspect;
-            // 模拟 Chrome 对象不存在（Firefox 原生状态）
+            // Simulate the absence of the Chrome object, which is the native Firefox state.
             delete window.chrome; 
         } catch (e) {}
     };
 
-    // 顺序执行
+    // Execute in order.
     maskWebDriver();
     maskPlugins();
     maskEnvironment();
     cleanAutomationTraces();
 
-    // 控制台静默（不打印 Stealth patch 信息，防止被检测 console.log）
+    // Keep the console silent so the stealth patch does not emit detectable logs.
 })();
