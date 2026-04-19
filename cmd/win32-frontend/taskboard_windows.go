@@ -220,7 +220,7 @@ func drawTaskCard(hdc HDC, width, top int, item ui.TodoItem, brushCard, brushThu
 	barRectBg := RECT{Left: int32(cardLeft + 104), Top: int32(barY), Right: int32(cardLeft + cardWidth - 14), Bottom: int32(barY + 22)}
 	procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&barRectBg)), brushBarBg)
 	barRectFill := barRectBg
-	progress := taskProgress(item.Status)
+	progress := taskProgress(item)
 	barRectFill.Right = barRectBg.Left + int32(float64(barRectBg.Right-barRectBg.Left)*progress)
 	if barRectFill.Right < barRectFill.Left+2 {
 		barRectFill.Right = barRectFill.Left + 2
@@ -235,10 +235,17 @@ func drawTaskCard(hdc HDC, width, top int, item ui.TodoItem, brushCard, brushThu
 	}
 	percent := fmt.Sprintf("%d%%", int(progress*100))
 	drawTextLineWithFont(hdc, uiFont, cardLeft+104+(cardWidth-120)/2, cardTop+78, percent, rgb(252, 252, 252))
+	statusText := taskProgressLabel(item)
+	if statusText != "" {
+		drawTextLineWithFont(hdc, uiFont, cardLeft+104, cardTop+96, statusText, rgb(184, 196, 208))
+	}
 }
 
-func taskProgress(status ui.TodoStatus) float64 {
-	switch status {
+func taskProgress(item ui.TodoItem) float64 {
+	if item.Progress > 0 {
+		return clamp01(item.Progress)
+	}
+	switch item.Status {
 	case ui.TodoStatusCompleted:
 		return 1
 	case ui.TodoStatusRunning:
@@ -247,6 +254,63 @@ func taskProgress(status ui.TodoStatus) float64 {
 		return 1
 	default:
 		return 0.0
+	}
+}
+
+func clamp01(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
+}
+
+func taskProgressLabel(item ui.TodoItem) string {
+	switch {
+	case item.Status == ui.TodoStatusFailed:
+		return "错"
+	case item.Status == ui.TodoStatusCompleted && item.Result.DownloadedCount > 0:
+		return fmt.Sprintf("%d张", item.Result.DownloadedCount)
+	case item.StepTotal > 0 && item.StepCurrent > 0:
+		base := fmt.Sprintf("%d/%d", item.StepCurrent, item.StepTotal)
+		suffix := taskPhaseShort(item.Phase)
+		if suffix == "" {
+			return base
+		}
+		return base + " " + suffix
+	case strings.TrimSpace(item.Phase) != "":
+		return taskPhaseShort(item.Phase)
+	default:
+		return ""
+	}
+}
+
+func taskPhaseShort(phase string) string {
+	switch strings.TrimSpace(strings.ToLower(phase)) {
+	case "pending":
+		return "待"
+	case "running":
+		return "跑"
+	case "completed":
+		return "完"
+	case "failed":
+		return "错"
+	case "启动":
+		return "启"
+	case "解析":
+		return "解"
+	case "下载中":
+		return "下"
+	case "完成":
+		return "完"
+	case "准备":
+		return "备"
+	case "激活":
+		return "激"
+	default:
+		return phase
 	}
 }
 

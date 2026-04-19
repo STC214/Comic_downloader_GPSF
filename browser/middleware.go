@@ -8,6 +8,8 @@ type BrowserType string
 const (
 	// BrowserTypeFirefox is the only supported runtime for the first rewrite pass.
 	BrowserTypeFirefox BrowserType = "firefox"
+	// BrowserTypeChromium identifies the Chromium runtime.
+	BrowserTypeChromium BrowserType = "chromium"
 )
 
 // ScriptRef describes a runtime init script such as firefox_stealth.js.
@@ -23,6 +25,7 @@ type LaunchSpec struct {
 	StealthScript    ScriptRef      `json:"stealthScript"`
 	RuntimeRoot      string         `json:"runtimeRoot"`
 	URL              string         `json:"url"`
+	DriverDir        string         `json:"driverDir"`
 	ProfileDir       string         `json:"profileDir"`
 	UserDataDir      string         `json:"userDataDir"`
 	UserAgent        string         `json:"userAgent"`
@@ -41,6 +44,7 @@ type Payload struct {
 	DownloadRoot     string         `json:"downloadRoot"`
 	OutputDir        string         `json:"outputDir"`
 	RuntimeRoot      string         `json:"runtimeRoot"`
+	DriverDir        string         `json:"driverDir"`
 	ProfileDir       string         `json:"profileDir"`
 	UserAgent        string         `json:"userAgent"`
 	Locale           string         `json:"locale"`

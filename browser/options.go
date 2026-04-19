@@ -2,7 +2,9 @@ package browser
 
 // BrowserSessionOptions controls how a browser middleware session is launched.
 type BrowserSessionOptions struct {
+	URL              string         `json:"url,omitempty"`
 	Headless         *bool          `json:"headless,omitempty"`
+	DriverDir        string         `json:"driverDir,omitempty"`
 	ProfileDir       string         `json:"profileDir,omitempty"`
 	UserAgent        string         `json:"userAgent,omitempty"`
 	Locale           string         `json:"locale,omitempty"`

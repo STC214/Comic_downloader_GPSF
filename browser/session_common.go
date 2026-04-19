@@ -25,6 +25,14 @@ type FirefoxSession struct {
 	closed      chan struct{}
 }
 
+// BrowserPageActions is the minimal page operation surface used by site flows.
+type BrowserPageActions interface {
+	PageURL() string
+	Content() (string, error)
+	Goto(url string) error
+	ClickText(text string) error
+}
+
 // LaunchData returns the launch inputs needed by the Playwright-backed implementation.
 func (m FirefoxMiddleware) LaunchData(opts BrowserSessionOptions) LaunchData {
 	spec := m.LaunchSpec(opts)
@@ -36,7 +44,7 @@ func (m FirefoxMiddleware) LaunchData(opts BrowserSessionOptions) LaunchData {
 
 // ContextData returns the browser context inputs needed by the Playwright-backed implementation.
 func (m FirefoxMiddleware) ContextData(opts BrowserSessionOptions) ContextData {
-	return ContextData{BaseURL: m.URL()}
+	return ContextData{BaseURL: m.resolveURL(opts)}
 }
 
 // Open delegates to the build-specific implementation helper.
@@ -57,6 +65,29 @@ func (s *FirefoxSession) Title() (string, error) {
 // WaitClosed blocks until the browser page is closed by the user or browser runtime.
 func (s *FirefoxSession) WaitClosed() error {
 	return waitFirefoxSessionClosed(s)
+}
+
+// PageURL returns the current page URL for the live browser session.
+func (s *FirefoxSession) PageURL() string {
+	if s == nil {
+		return ""
+	}
+	return s.URL
+}
+
+// Content returns the current page HTML for the live browser session.
+func (s *FirefoxSession) Content() (string, error) {
+	return sessionContent(s)
+}
+
+// Goto navigates the live browser session to the provided URL.
+func (s *FirefoxSession) Goto(url string) error {
+	return sessionGoto(s, url)
+}
+
+// ClickText clicks a visible text node in the live browser session.
+func (s *FirefoxSession) ClickText(text string) error {
+	return sessionClickText(s, text)
 }
 
 func normalizedURL(value string) string {

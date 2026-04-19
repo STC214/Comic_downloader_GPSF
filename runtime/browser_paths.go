@@ -13,6 +13,8 @@ type BrowserType string
 const (
 	// BrowserTypeFirefox identifies the bundled Firefox runtime.
 	BrowserTypeFirefox BrowserType = "firefox"
+	// BrowserTypeChromium identifies the Playwright Chromium runtime.
+	BrowserTypeChromium BrowserType = "chromium"
 )
 
 // BrowserPathKind identifies a precise project-managed browser path.
@@ -75,6 +77,27 @@ func NewBrowserPaths(workspaceRoot string) BrowserPaths {
 // DefaultFirefoxUserDataDir returns the exact project path used for Firefox userdata.
 func DefaultFirefoxUserDataDir(runtimeRoot string) string {
 	return filepath.Join(normalizeRoot(runtimeRoot), "browser-profiles", "baseline-userdata")
+}
+
+// DefaultChromiumInstallDir returns the project-default Chromium install directory.
+func DefaultChromiumInstallDir(runtimeRoot string) string {
+	return filepath.Join(normalizeRoot(runtimeRoot), "playwright-browsers", "chromium")
+}
+
+// DefaultFirefoxInstallDir returns the project-default Firefox install directory.
+func DefaultFirefoxInstallDir(runtimeRoot string) string {
+	return filepath.Join(normalizeRoot(runtimeRoot), "playwright-browsers", "firefox")
+}
+
+// DefaultPlaywrightDriverDir returns the project-default Playwright driver directory.
+func DefaultPlaywrightDriverDir(runtimeRoot string) string {
+	return filepath.Join(normalizeRoot(runtimeRoot), "playwright-browsers", "driver")
+}
+
+// DefaultChromiumExecutablePath returns the project-default Chromium executable path guess.
+// The actual executable is resolved by searching under the install root.
+func DefaultChromiumExecutablePath(runtimeRoot string) string {
+	return filepath.Join(DefaultChromiumInstallDir(runtimeRoot), "chrome.exe")
 }
 
 // DefaultFirefoxExecutablePath returns the exact bundled Firefox executable path.

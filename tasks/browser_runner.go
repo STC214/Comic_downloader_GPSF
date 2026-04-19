@@ -6,15 +6,27 @@ import (
 	"strings"
 
 	projectruntime "comic_downloader_go_playwright_stealth/runtime"
+	"comic_downloader_go_playwright_stealth/siteflow/zeri"
 )
 
 // BrowserRunResult is the task-layer outcome of opening a browser page.
 type BrowserRunResult struct {
 	URL                  string `json:"url"`
+	ResolvedURL          string `json:"resolvedURL,omitempty"`
 	Title                string `json:"title"`
 	Headless             bool   `json:"headless"`
 	KeepOpen             bool   `json:"keepOpen"`
 	PlaywrightProfileDir string `json:"playwrightProfileDir,omitempty"`
+	Site                 string `json:"site,omitempty"`
+	ReaderURL            string `json:"readerURL,omitempty"`
+	SummaryPageCount     int    `json:"summaryPageCount,omitempty"`
+	ReaderPageCount      int    `json:"readerPageCount,omitempty"`
+	ReaderImageCount     int    `json:"readerImageCount,omitempty"`
+	ReaderFilteredCount  int    `json:"readerFilteredCount,omitempty"`
+	ReaderActivation     int    `json:"readerActivationClicks,omitempty"`
+	DownloadedCount      int    `json:"downloadedCount,omitempty"`
+	DownloadedBytes      int64  `json:"downloadedBytes,omitempty"`
+	DownloadedDir        string `json:"downloadedDir,omitempty"`
 }
 
 // RunBrowserRequest opens the page described by the request and returns a normalized result.
@@ -23,14 +35,18 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 	if strings.TrimSpace(req.URL) == "" {
 		return BrowserRunResult{}, fmt.Errorf("browser url is empty")
 	}
-	manager := projectruntime.NewBrowserProfileManager(req.RuntimeRoot)
+	manager := projectruntime.NewBrowserProfileManager(workspaceRootFromRuntimeRoot(req.RuntimeRoot))
 	var cleanupProfile func()
+	sourceProfileDir := ""
+	activeProfileDir := ""
 	if req.UsesTaskProfile() {
 		profile, err := req.PrepareTaskProfile()
 		if err != nil {
 			return BrowserRunResult{}, err
 		}
+		sourceProfileDir = profile.MotherProfileDir
 		req.UserDataDir = absolutePathOrClean(profile.ContentUserData)
+		activeProfileDir = req.UserDataDir
 		cleanupProfile = func() {
 			_ = req.CleanupTaskProfile()
 		}
@@ -39,14 +55,21 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 		if err != nil {
 			return BrowserRunResult{}, err
 		}
+		sourceProfileDir = profile.SourceProfileDir
 		req.UserDataDir = absolutePathOrClean(profile.RootDir)
+		activeProfileDir = req.UserDataDir
 		cleanupProfile = func() {
 			_ = manager.CleanupPlaywrightProfile(profile)
 		}
 	}
-	if req.UserDataDir != "" {
-		fmt.Printf("playwright profile dir: %s\n", req.UserDataDir)
+	if sourceProfileDir != "" || activeProfileDir != "" {
+		fmt.Printf("profile flow: source=%s temp=%s output=%s\n", sourceProfileDir, activeProfileDir, req.OutputDir)
 	}
+
+	if req.Progress != nil {
+		req.Progress(zeri.DownloadProgress{Fraction: 0.02, Phase: "启动", Message: "准备"})
+	}
+
 	middleware := req.FirefoxMiddleware()
 	session, err := middleware.Open(req.BrowserOptions())
 	if err != nil {
@@ -55,12 +78,47 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 		}
 		return BrowserRunResult{}, err
 	}
+	if req.Progress != nil {
+		req.Progress(zeri.DownloadProgress{Fraction: 0.08, Phase: "启动", Message: "完成"})
+	}
 	defer func() {
 		_ = session.Close()
 		if cleanupProfile != nil {
 			cleanupProfile()
 		}
 	}()
+
+	var zeriResult zeri.ExecutionResult
+	var downloadResult zeri.DownloadResult
+	site := ""
+	if zeri.IsZeriURL(req.URL) {
+		site = "zeri"
+		if req.Progress != nil {
+			req.Progress(zeri.DownloadProgress{Fraction: 0.10, Phase: "解析", Message: "摘要"})
+		}
+		zeriResult, err = zeri.ExecuteWithProgress(session, req.URL, progressSpan(req.Progress, 0.10, 0.90))
+		if err != nil {
+			return BrowserRunResult{}, err
+		}
+		if strings.TrimSpace(req.OutputDir) != "" && len(zeriResult.CollectedImages) > 0 {
+			downloadWeight := zeri.DownloadWeightForCount(zeriResult.Summary.PageCount)
+			parseWeight := 1 - downloadWeight
+			if parseWeight < 0 {
+				parseWeight = 0
+			}
+			downloadStart := 0.10 + 0.90*parseWeight
+			downloadSpan := 0.90 * downloadWeight
+			downloadResult, err = zeri.DownloadImages(
+				zeriResult.Summary,
+				zeriResult.CollectedImages,
+				req.OutputDir,
+				progressSpan(req.Progress, downloadStart, downloadSpan),
+			)
+			if err != nil {
+				return BrowserRunResult{}, err
+			}
+		}
+	}
 
 	title, err := session.Title()
 	if err != nil {
@@ -74,10 +132,21 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 
 	return BrowserRunResult{
 		URL:                  req.URL,
+		ResolvedURL:          session.PageURL(),
 		Title:                title,
 		Headless:             req.Headless,
 		KeepOpen:             req.KeepOpen,
 		PlaywrightProfileDir: req.UserDataDir,
+		Site:                 site,
+		ReaderURL:            zeriResult.Reader.URL,
+		SummaryPageCount:     zeriResult.Summary.PageCount,
+		ReaderPageCount:      zeriResult.Reader.PageCount,
+		ReaderImageCount:     len(zeriResult.Reader.ImageURLs),
+		ReaderFilteredCount:  len(zeriResult.CollectedImages),
+		ReaderActivation:     zeriResult.ActivationClicks,
+		DownloadedCount:      len(downloadResult.Files),
+		DownloadedBytes:      downloadResult.Bytes,
+		DownloadedDir:        downloadResult.OutputDir,
 	}, nil
 }
 
@@ -91,4 +160,20 @@ func absolutePathOrClean(path string) string {
 		return filepath.Clean(path)
 	}
 	return filepath.Clean(abs)
+}
+
+func progressSpan(cb func(zeri.DownloadProgress), start, span float64) func(zeri.DownloadProgress) {
+	if cb == nil {
+		return nil
+	}
+	return func(update zeri.DownloadProgress) {
+		if update.Fraction < 0 {
+			update.Fraction = 0
+		}
+		if update.Fraction > 1 {
+			update.Fraction = 1
+		}
+		update.Fraction = start + span*update.Fraction
+		cb(update)
+	}
 }

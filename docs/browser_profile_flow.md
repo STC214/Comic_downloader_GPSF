@@ -1,11 +1,11 @@
 # Browser Profile Flow
 
 This repository currently uses a Firefox-first browser middleware.
-The browser layer starts from a selected Firefox mother profile, copies it into a temporary Playwright profile, and launches Firefox from that temporary copy.
+The browser layer starts from the selected project-owned Firefox working profile, copies it into a temporary Playwright profile, and launches Firefox from that temporary copy.
 
 ## Current launch flow
 
-1. Resolve the selected Firefox mother profile directory.
+1. Resolve the selected Firefox working profile directory.
 2. Copy that entire directory into a fresh temporary Playwright profile under `runtime/browser-profiles/tasks/`.
 3. Launch Firefox with `playwright-go` using the copied temp directory as `userDataDir`.
 4. Inject `runtime/firefox_stealth.js` before any page runs.
@@ -16,7 +16,8 @@ The browser layer starts from a selected Firefox mother profile, copies it into 
 ## Current defaults
 
 - Browser executable: `C:\Program Files\Mozilla Firefox\firefox.exe`
-- Selected mother profile: `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\jo2klram.default-release`
+- Selected mother profile source for refresh: `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\jo2klram.default-release`
+- Selected working profile used by tasks: `runtime/browser-profiles/baseline-userdata`
 - Default User-Agent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0`
 - Default locale: `en-US`
 - Default timezone: `Asia/Shanghai`
@@ -55,7 +56,7 @@ Both styles are disposable and are removed after the run finishes.
 
 The goal is to keep the browser run reproducible while still starting from a real local Firefox profile:
 
-- The selected mother profile is copied, not modified in place.
+- The selected working profile is copied, not modified in place.
 - The browser always launches from a temporary directory.
 - Temporary directories are cleaned up at the end of the run.
 - The browser middleware is the single place that owns stealth injection and launch defaults.

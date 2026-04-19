@@ -7,31 +7,34 @@ import (
 
 	"comic_downloader_go_playwright_stealth/browser"
 	projectruntime "comic_downloader_go_playwright_stealth/runtime"
+	"comic_downloader_go_playwright_stealth/siteflow/zeri"
 )
 
 const defaultFirefoxUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0"
 
 // BrowserLaunchRequest is the task-level browser input that flows into the middleware.
 type BrowserLaunchRequest struct {
-	URL                  string         `json:"url"`
-	Headless             bool           `json:"headless"`
-	RuntimeRoot          string         `json:"runtimeRoot"`
-	BrowserPath          string         `json:"browserPath"`
-	ProfileDir           string         `json:"profileDir"`
-	UserDataDir          string         `json:"userDataDir"`
-	UserAgent            string         `json:"userAgent"`
-	Locale               string         `json:"locale"`
-	TimezoneID           string         `json:"timezoneId"`
-	ViewportWidth        int            `json:"viewportWidth"`
-	ViewportHeight       int            `json:"viewportHeight"`
-	FirefoxUserPrefsJSON string         `json:"firefoxUserPrefsJson"`
-	FirefoxUserPrefs     map[string]any `json:"firefoxUserPrefs"`
-	DownloadRoot         string         `json:"downloadRoot"`
-	OutputDir            string         `json:"outputDir"`
-	Adblock              bool           `json:"adblock"`
-	KeepOpen             bool           `json:"keepOpen"`
-	WorkerID             string         `json:"workerId"`
-	TaskID               string         `json:"taskId"`
+	URL                  string                      `json:"url"`
+	Headless             bool                        `json:"headless"`
+	RuntimeRoot          string                      `json:"runtimeRoot"`
+	BrowserPath          string                      `json:"browserPath"`
+	DriverDir            string                      `json:"driverDir"`
+	ProfileDir           string                      `json:"profileDir"`
+	UserDataDir          string                      `json:"userDataDir"`
+	UserAgent            string                      `json:"userAgent"`
+	Locale               string                      `json:"locale"`
+	TimezoneID           string                      `json:"timezoneId"`
+	ViewportWidth        int                         `json:"viewportWidth"`
+	ViewportHeight       int                         `json:"viewportHeight"`
+	FirefoxUserPrefsJSON string                      `json:"firefoxUserPrefsJson"`
+	FirefoxUserPrefs     map[string]any              `json:"firefoxUserPrefs"`
+	DownloadRoot         string                      `json:"downloadRoot"`
+	OutputDir            string                      `json:"outputDir"`
+	Adblock              bool                        `json:"adblock"`
+	KeepOpen             bool                        `json:"keepOpen"`
+	WorkerID             string                      `json:"workerId"`
+	TaskID               string                      `json:"taskId"`
+	Progress             func(zeri.DownloadProgress) `json:"-"`
 }
 
 // Normalize returns a cleaned request with defaults applied.
@@ -41,6 +44,9 @@ func (r BrowserLaunchRequest) Normalize() BrowserLaunchRequest {
 	}
 	if strings.TrimSpace(r.BrowserPath) == "" {
 		r.BrowserPath = projectruntime.DefaultFirefoxExecutablePath(r.RuntimeRoot)
+	}
+	if strings.TrimSpace(r.DriverDir) == "" {
+		r.DriverDir = projectruntime.DefaultPlaywrightDriverDir(r.RuntimeRoot)
 	}
 	r.URL = strings.TrimSpace(r.URL)
 	selectedProfileDir := strings.TrimSpace(r.ProfileDir)
@@ -106,7 +112,9 @@ func (r BrowserLaunchRequest) CleanupTaskProfile() error {
 // BrowserOptions converts the request into browser-layer launch options.
 func (r BrowserLaunchRequest) BrowserOptions() browser.BrowserSessionOptions {
 	return browser.BrowserSessionOptions{
+		URL:              r.URL,
 		Headless:         browser.HeadlessPtr(r.Headless),
+		DriverDir:        r.DriverDir,
 		ProfileDir:       r.ProfileDir,
 		UserAgent:        r.UserAgent,
 		Locale:           r.Locale,
@@ -123,6 +131,7 @@ func (r BrowserLaunchRequest) FirefoxMiddleware() browser.FirefoxMiddleware {
 	middleware := browser.NewFirefoxMiddleware(r.URL).
 		WithRuntimeRoot(r.RuntimeRoot).
 		WithBrowserPath(r.BrowserPath).
+		WithDriverDir(r.DriverDir).
 		WithProfileDir(r.ProfileDir).
 		WithUserDataDir(r.UserDataDir).
 		WithUserAgent(r.UserAgent).

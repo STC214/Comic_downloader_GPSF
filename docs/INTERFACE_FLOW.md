@@ -21,6 +21,12 @@ The task manager tracks these states:
 - `completed`
 - `failed`
 
+The current frontend behavior is:
+
+- Clicking `Add task` starts the task immediately.
+- The task list behaves as run history plus active tasks, not as a waiting queue.
+- `Start all unfinished tasks` still exists for any remaining unfinished items, and it does not pre-check the browser lock.
+
 ## Runtime files
 
 Each task writes files under `runtime/`:
@@ -48,6 +54,7 @@ Each task writes files under `runtime/`:
 - The fixed Firefox User-Agent is `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0`.
 - The `task-probe` CLI is the current browser smoke test entry point.
 - The `zeri` summary/reader contract is documented in [`docs/zeri_flow_rules.md`](zeri_flow_rules.md).
+- The `zeri` summary-page parser now lives in [`siteflow/zeri`](../siteflow/zeri).
 
 ## Browser mother profiles
 

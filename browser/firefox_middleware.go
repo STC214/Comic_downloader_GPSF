@@ -11,41 +11,45 @@ const defaultFirefoxUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:14
 
 // FirefoxMiddleware carries the browser-side state for one URL.
 type FirefoxMiddleware struct {
-	url              string
-	runtimeRoot      string
-	downloadRoot     string
-	outputDir        string
-	profileDir       string
-	userDataDir      string
-	userAgent        string
-	locale           string
-	timezoneID       string
-	viewportWidth    int
-	viewportHeight   int
-	firefoxUserPrefs map[string]any
-	browserPath      string
-	headless         bool
-	adblock          bool
+	url               string
+	runtimeRoot       string
+	downloadRoot      string
+	outputDir         string
+	driverDir         string
+	browserInstallDir string
+	profileDir        string
+	userDataDir       string
+	userAgent         string
+	locale            string
+	timezoneID        string
+	viewportWidth     int
+	viewportHeight    int
+	firefoxUserPrefs  map[string]any
+	browserPath       string
+	headless          bool
+	adblock           bool
 }
 
 // NewFirefoxMiddleware builds a Firefox-only browser middleware state object.
 func NewFirefoxMiddleware(url string) FirefoxMiddleware {
 	return FirefoxMiddleware{
-		url:              strings.TrimSpace(url),
-		runtimeRoot:      "runtime",
-		downloadRoot:     "",
-		outputDir:        "",
-		profileDir:       projectruntime.DefaultFirefoxProfileDir(),
-		userDataDir:      "",
-		userAgent:        defaultFirefoxUserAgent,
-		locale:           "",
-		timezoneID:       "",
-		viewportWidth:    1365,
-		viewportHeight:   768,
-		firefoxUserPrefs: nil,
-		browserPath:      projectruntime.DefaultFirefoxExecutablePath("runtime"),
-		headless:         true,
-		adblock:          true,
+		url:               strings.TrimSpace(url),
+		runtimeRoot:       "runtime",
+		downloadRoot:      "",
+		outputDir:         "",
+		driverDir:         "",
+		browserInstallDir: "",
+		profileDir:        projectruntime.DefaultFirefoxProfileDir(),
+		userDataDir:       "",
+		userAgent:         defaultFirefoxUserAgent,
+		locale:            "",
+		timezoneID:        "",
+		viewportWidth:     1365,
+		viewportHeight:    768,
+		firefoxUserPrefs:  nil,
+		browserPath:       projectruntime.DefaultFirefoxExecutablePath("runtime"),
+		headless:          true,
+		adblock:           true,
 	}
 }
 
@@ -78,6 +82,18 @@ func (m FirefoxMiddleware) WithDownloadRoot(downloadRoot string) FirefoxMiddlewa
 // WithOutputDir sets the resolved output directory.
 func (m FirefoxMiddleware) WithOutputDir(outputDir string) FirefoxMiddleware {
 	m.outputDir = normalizePath(outputDir)
+	return m
+}
+
+// WithDriverDir sets the Playwright driver directory.
+func (m FirefoxMiddleware) WithDriverDir(driverDir string) FirefoxMiddleware {
+	m.driverDir = normalizePath(driverDir)
+	return m
+}
+
+// WithBrowserInstallDir sets the browser install directory used to resolve the driver when needed.
+func (m FirefoxMiddleware) WithBrowserInstallDir(browserInstallDir string) FirefoxMiddleware {
+	m.browserInstallDir = normalizePath(browserInstallDir)
 	return m
 }
 
@@ -190,6 +206,13 @@ func (m FirefoxMiddleware) resolveProfileDir(opts BrowserSessionOptions) string 
 	return m.ProfileDir()
 }
 
+func (m FirefoxMiddleware) resolveURL(opts BrowserSessionOptions) string {
+	if trimmed := strings.TrimSpace(opts.URL); trimmed != "" {
+		return trimmed
+	}
+	return m.URL()
+}
+
 func (m FirefoxMiddleware) resolveHeadless(opts BrowserSessionOptions) bool {
 	if opts.Headless != nil {
 		return *opts.Headless
@@ -202,6 +225,23 @@ func (m FirefoxMiddleware) resolveUserDataDir(opts BrowserSessionOptions) string
 		return filepath.Clean(trimmed)
 	}
 	return m.resolveProfileDir(opts)
+}
+
+func (m FirefoxMiddleware) resolveDriverDir(opts BrowserSessionOptions) string {
+	if trimmed := strings.TrimSpace(opts.DriverDir); trimmed != "" {
+		return filepath.Clean(trimmed)
+	}
+	return m.driverDir
+}
+
+func (m FirefoxMiddleware) resolveDriverDirOrDefault(opts BrowserSessionOptions) string {
+	if resolved := m.resolveDriverDir(opts); strings.TrimSpace(resolved) != "" {
+		return resolved
+	}
+	if strings.TrimSpace(m.browserInstallDir) != "" {
+		return filepath.Join(m.browserInstallDir, "driver")
+	}
+	return projectruntime.DefaultPlaywrightDriverDir(m.RuntimeRoot())
 }
 
 func (m FirefoxMiddleware) resolveLocale(opts BrowserSessionOptions) string {
@@ -251,7 +291,7 @@ func (m FirefoxMiddleware) LaunchSpec(opts BrowserSessionOptions) LaunchSpec {
 		BrowserPath:      m.BrowserPath(),
 		StealthScript:    m.StealthScript(),
 		RuntimeRoot:      m.RuntimeRoot(),
-		URL:              m.URL(),
+		URL:              m.resolveURL(opts),
 		ProfileDir:       m.resolveProfileDir(opts),
 		UserDataDir:      m.resolveUserDataDir(opts),
 		UserAgent:        m.resolveUserAgent(opts),
@@ -262,13 +302,14 @@ func (m FirefoxMiddleware) LaunchSpec(opts BrowserSessionOptions) LaunchSpec {
 		FirefoxUserPrefs: m.resolveFirefoxUserPrefs(opts),
 		Headless:         m.resolveHeadless(opts),
 		Adblock:          m.adblock,
+		DriverDir:        m.resolveDriverDirOrDefault(opts),
 	}
 }
 
 func (m FirefoxMiddleware) Payload(opts BrowserSessionOptions) Payload {
 	width, height := m.resolveViewport(opts)
 	return Payload{
-		URL:              m.URL(),
+		URL:              m.resolveURL(opts),
 		DownloadRoot:     m.downloadRoot,
 		OutputDir:        m.outputDir,
 		RuntimeRoot:      m.RuntimeRoot(),
@@ -282,5 +323,6 @@ func (m FirefoxMiddleware) Payload(opts BrowserSessionOptions) Payload {
 		Headless:         m.resolveHeadless(opts),
 		Adblock:          m.adblock,
 		BrowserType:      string(m.BrowserType()),
+		DriverDir:        m.resolveDriverDirOrDefault(opts),
 	}
 }

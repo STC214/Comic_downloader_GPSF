@@ -45,14 +45,10 @@ func (m FirefoxMiddleware) toPlaywrightContextOptions(opts BrowserSessionOptions
 }
 
 func (m FirefoxMiddleware) toPlaywrightPersistentContextOptions(opts BrowserSessionOptions) playwright.BrowserTypeLaunchPersistentContextOptions {
-	data := m.ContextData(opts)
 	contextOptions := playwright.BrowserTypeLaunchPersistentContextOptions{
 		ExecutablePath:   playwright.String(m.BrowserPath()),
 		Headless:         playwright.Bool(m.resolveHeadless(opts)),
 		FirefoxUserPrefs: m.resolveFirefoxUserPrefs(opts),
-	}
-	if strings.TrimSpace(data.BaseURL) != "" {
-		contextOptions.BaseURL = playwright.String(data.BaseURL)
 	}
 	if userAgent := strings.TrimSpace(m.resolveUserAgent(opts)); userAgent != "" {
 		contextOptions.UserAgent = playwright.String(userAgent)
@@ -82,6 +78,20 @@ func openFirefoxSession(m FirefoxMiddleware, opts BrowserSessionOptions) (*Firef
 	}
 	if _, err := os.Stat(spec.StealthScript.Path); err != nil {
 		return nil, fmt.Errorf("stealth script %q: %w", spec.StealthScript.Path, err)
+	}
+
+	previousDriverPath := os.Getenv("PLAYWRIGHT_DRIVER_PATH")
+	if driverDir := strings.TrimSpace(spec.DriverDir); driverDir != "" {
+		if err := os.Setenv("PLAYWRIGHT_DRIVER_PATH", driverDir); err != nil {
+			return nil, fmt.Errorf("set PLAYWRIGHT_DRIVER_PATH: %w", err)
+		}
+		defer func() {
+			if previousDriverPath == "" {
+				_ = os.Unsetenv("PLAYWRIGHT_DRIVER_PATH")
+				return
+			}
+			_ = os.Setenv("PLAYWRIGHT_DRIVER_PATH", previousDriverPath)
+		}()
 	}
 
 	releaseLock, err := projectruntime.AcquireBrowserSessionLock(m.RuntimeRoot())
@@ -114,6 +124,7 @@ func openFirefoxSession(m FirefoxMiddleware, opts BrowserSessionOptions) (*Firef
 
 	var page playwright.Page
 	pages := context.Pages()
+	fmt.Printf("browser session pages before goto: %d\n", len(pages))
 	if len(pages) > 0 {
 		page = pages[0]
 	} else {
@@ -125,6 +136,7 @@ func openFirefoxSession(m FirefoxMiddleware, opts BrowserSessionOptions) (*Firef
 		_ = releaseLock()
 		return nil, fmt.Errorf("create firefox page: %w", err)
 	}
+	fmt.Printf("browser session selected page before goto: %s\n", page.URL())
 
 	closed := make(chan struct{})
 	var closedOnce sync.Once
@@ -134,17 +146,21 @@ func openFirefoxSession(m FirefoxMiddleware, opts BrowserSessionOptions) (*Firef
 		})
 	})
 
-	if _, err := page.Goto(spec.URL); err != nil {
+	targetURL := spec.URL
+	if strings.TrimSpace(targetURL) == "" {
+		targetURL = m.URL()
+	}
+	if _, err := page.Goto(targetURL); err != nil {
 		_ = page.Close()
 		_ = context.Close()
 		_ = pw.Stop()
 		_ = releaseLock()
-		return nil, fmt.Errorf("goto %q: %w", spec.URL, err)
+		return nil, fmt.Errorf("goto %q: %w", targetURL, err)
 	}
-
+	fmt.Printf("browser session selected page after goto: %s\n", page.URL())
 	return &FirefoxSession{
 		Middleware:  m,
-		URL:         spec.URL,
+		URL:         targetURL,
 		Playwright:  pw,
 		Browser:     nil,
 		Context:     context,
@@ -207,4 +223,42 @@ func waitFirefoxSessionClosed(s *FirefoxSession) error {
 	}
 	<-s.closed
 	return nil
+}
+
+func sessionContent(s *FirefoxSession) (string, error) {
+	if s == nil {
+		return "", errors.New("browser session is nil")
+	}
+	page, ok := s.Page.(playwright.Page)
+	if !ok || page == nil {
+		return "", errors.New("browser session page is not a playwright.Page")
+	}
+	return page.Content()
+}
+
+func sessionGoto(s *FirefoxSession, url string) error {
+	if s == nil {
+		return errors.New("browser session is nil")
+	}
+	page, ok := s.Page.(playwright.Page)
+	if !ok || page == nil {
+		return errors.New("browser session page is not a playwright.Page")
+	}
+	if _, err := page.Goto(url); err != nil {
+		return err
+	}
+	s.URL = url
+	return nil
+}
+
+func sessionClickText(s *FirefoxSession, text string) error {
+	if s == nil {
+		return errors.New("browser session is nil")
+	}
+	page, ok := s.Page.(playwright.Page)
+	if !ok || page == nil {
+		return errors.New("browser session page is not a playwright.Page")
+	}
+	locator := page.GetByText(text, playwright.PageGetByTextOptions{Exact: playwright.Bool(true)})
+	return locator.Click()
 }

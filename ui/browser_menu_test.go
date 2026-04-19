@@ -3,12 +3,9 @@ package ui
 import (
 	"path/filepath"
 	"testing"
-
-	"comic_downloader_go_playwright_stealth/runtime"
 )
 
 func TestDefaultBrowserMenuStateIncludesFirefoxPaths(t *testing.T) {
-	t.Setenv("APPDATA", filepath.Join(t.TempDir(), "AppData", "Roaming"))
 	menu := DefaultBrowserMenuState()
 	if menu.SelectedBrowser != "firefox" {
 		t.Fatalf("SelectedBrowser = %q, want firefox", menu.SelectedBrowser)
@@ -16,11 +13,19 @@ func TestDefaultBrowserMenuStateIncludesFirefoxPaths(t *testing.T) {
 	if menu.FirefoxExecutablePath != `C:\Program Files\Mozilla Firefox\firefox.exe` {
 		t.Fatalf("FirefoxExecutablePath = %q, want system Firefox path", menu.FirefoxExecutablePath)
 	}
-	wantMother := runtime.DefaultFirefoxProfileSourceDir()
+	wantFirefoxInstall := filepath.Clean(`runtime/playwright-browsers/firefox`)
+	if menu.FirefoxInstallRoot != wantFirefoxInstall {
+		t.Fatalf("FirefoxInstallRoot = %q, want %q", menu.FirefoxInstallRoot, wantFirefoxInstall)
+	}
+	wantChromiumInstall := filepath.Clean(`runtime/playwright-browsers/chromium`)
+	if menu.ChromiumInstallRoot != wantChromiumInstall {
+		t.Fatalf("ChromiumInstallRoot = %q, want %q", menu.ChromiumInstallRoot, wantChromiumInstall)
+	}
+	wantMother := `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\jo2klram.default-release`
 	if menu.FirefoxMotherProfileDir != wantMother {
 		t.Fatalf("FirefoxMotherProfileDir = %q, want %q", menu.FirefoxMotherProfileDir, wantMother)
 	}
-	wantWorking := runtime.DefaultFirefoxProfileDir()
+	wantWorking := filepath.Clean(`runtime/browser-profiles/baseline-userdata`)
 	if menu.FirefoxWorkingProfileDir != wantWorking {
 		t.Fatalf("FirefoxWorkingProfileDir = %q, want %q", menu.FirefoxWorkingProfileDir, wantWorking)
 	}

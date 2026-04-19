@@ -24,33 +24,37 @@ const (
 	windowClassName = "ComicDownloaderWin32Frontend"
 	windowTitle     = "\u6f2b\u753b\u4e0b\u8f7d\u5668"
 
-	menuIDSetExecutable  = 1001
-	menuIDSetMother      = 1002
-	menuIDRefreshProfile = 1003
-	menuIDStartAll       = 1004
-	menuIDSetDownloadDir = 1005
-	menuIDSetConcurrency = 1006
-	menuIDRefreshAdblock = 1007
-	menuIDClearCompleted = 1008
+	menuIDSetExecutable   = 1001
+	menuIDSetChromium     = 1002
+	menuIDSetMother       = 1003
+	menuIDRefreshProfile  = 1004
+	menuIDStartAll        = 1005
+	menuIDSetDownloadDir  = 1006
+	menuIDSetConcurrency  = 1007
+	menuIDRefreshAdblock  = 1008
+	menuIDClearCompleted  = 1009
+	menuIDInstallBrowsers = 1010
 
-	controlIDURLEdit      = 2001
-	controlIDAddTask      = 2002
-	controlIDTaskTitle    = 2003
-	controlIDListBox      = 2004
-	controlIDInfoTitle    = 2005
-	controlIDInfoEdit     = 2006
-	controlIDStatusText   = 2007
-	controlIDStartTasks   = 2008
-	controlIDRefreshBtn   = 2009
-	controlIDDownloadDir  = 2010
-	controlIDConcurrency  = 2011
-	controlIDAdblockRules = 2012
-	controlIDClearDone    = 2013
+	controlIDURLEdit        = 2001
+	controlIDAddTask        = 2002
+	controlIDTaskTitle      = 2003
+	controlIDListBox        = 2004
+	controlIDInfoTitle      = 2005
+	controlIDInfoEdit       = 2006
+	controlIDStatusText     = 2007
+	controlIDStartTasks     = 2008
+	controlIDRefreshBtn     = 2009
+	controlIDDownloadDir    = 2010
+	controlIDConcurrency    = 2011
+	controlIDAdblockRules   = 2012
+	controlIDClearDone      = 2013
+	controlIDActionProgress = 2014
 
 	msgRefreshTasks  = 0x8001
 	msgRefreshInfo   = 0x8002
 	msgRefreshStatus = 0x8003
 	msgRefreshBoard  = 0x8004
+	msgRefreshAction = 0x8005
 )
 
 var (
@@ -62,53 +66,53 @@ var (
 	dwmapi   = syscall.NewLazyDLL("dwmapi.dll")
 	uxtheme  = syscall.NewLazyDLL("uxtheme.dll")
 
-	procAppendMenuW          = user32.NewProc("AppendMenuW")
-	procCreateMenu           = user32.NewProc("CreateMenu")
-	procCreatePopupMenu      = user32.NewProc("CreatePopupMenu")
-	procCreateWindowExW      = user32.NewProc("CreateWindowExW")
-	procBeginPaint           = user32.NewProc("BeginPaint")
-	procDefWindowProcW       = user32.NewProc("DefWindowProcW")
-	procDispatchMessageW     = user32.NewProc("DispatchMessageW")
-	procEndPaint             = user32.NewProc("EndPaint")
-	procGetClientRect        = user32.NewProc("GetClientRect")
-	procGetMessageW          = user32.NewProc("GetMessageW")
-	procGetModuleHandleW     = kernel32.NewProc("GetModuleHandleW")
-	procGetWindowTextLen     = user32.NewProc("GetWindowTextLengthW")
-	procGetWindowTextW       = user32.NewProc("GetWindowTextW")
-	procGetOpenFileNameW     = comdlg32.NewProc("GetOpenFileNameW")
-	procLoadCursorW          = user32.NewProc("LoadCursorW")
-	procMessageBoxW          = user32.NewProc("MessageBoxW")
-	procMoveWindow           = user32.NewProc("MoveWindow")
-	procPostMessageW         = user32.NewProc("PostMessageW")
-	procPostQuitMessage      = user32.NewProc("PostQuitMessage")
-	procRegisterClassExW     = user32.NewProc("RegisterClassExW")
-	procSendMessageW         = user32.NewProc("SendMessageW")
-	procSetMenu              = user32.NewProc("SetMenu")
-	procSetWindowTextW       = user32.NewProc("SetWindowTextW")
-	procShowWindow           = user32.NewProc("ShowWindow")
-	procTranslateMessage     = user32.NewProc("TranslateMessage")
-	procUpdateWindow         = user32.NewProc("UpdateWindow")
-	procInvalidateRect       = user32.NewProc("InvalidateRect")
-	procSetScrollRange       = user32.NewProc("SetScrollRange")
-	procSetScrollPos         = user32.NewProc("SetScrollPos")
-	procGetScrollPos         = user32.NewProc("GetScrollPos")
-	procSHBrowseForFolderW   = shell32.NewProc("SHBrowseForFolderW")
-	procSHGetPathFromIDListW = shell32.NewProc("SHGetPathFromIDListW")
-	procCoTaskMemFree        = ole32.NewProc("CoTaskMemFree")
-	gdi32                    = syscall.NewLazyDLL("gdi32.dll")
-	procCreateSolidBrush     = gdi32.NewProc("CreateSolidBrush")
-	procDeleteObject         = gdi32.NewProc("DeleteObject")
-	procFillRect             = user32.NewProc("FillRect")
-	procSelectObject         = gdi32.NewProc("SelectObject")
-	procSetBkMode            = gdi32.NewProc("SetBkMode")
-	procSetBkColor           = gdi32.NewProc("SetBkColor")
-	procSetTextColor         = gdi32.NewProc("SetTextColor")
-	procTextOutW             = gdi32.NewProc("TextOutW")
-	procCreateFontW          = gdi32.NewProc("CreateFontW")
-	procGetStockObject       = gdi32.NewProc("GetStockObject")
-	procDwmSetWindowAttribute = dwmapi.NewProc("DwmSetWindowAttribute")
-	procSetPreferredAppMode   = uxtheme.NewProc("SetPreferredAppMode")
-	procFlushMenuThemes       = uxtheme.NewProc("FlushMenuThemes")
+	procAppendMenuW            = user32.NewProc("AppendMenuW")
+	procCreateMenu             = user32.NewProc("CreateMenu")
+	procCreatePopupMenu        = user32.NewProc("CreatePopupMenu")
+	procCreateWindowExW        = user32.NewProc("CreateWindowExW")
+	procBeginPaint             = user32.NewProc("BeginPaint")
+	procDefWindowProcW         = user32.NewProc("DefWindowProcW")
+	procDispatchMessageW       = user32.NewProc("DispatchMessageW")
+	procEndPaint               = user32.NewProc("EndPaint")
+	procGetClientRect          = user32.NewProc("GetClientRect")
+	procGetMessageW            = user32.NewProc("GetMessageW")
+	procGetModuleHandleW       = kernel32.NewProc("GetModuleHandleW")
+	procGetWindowTextLen       = user32.NewProc("GetWindowTextLengthW")
+	procGetWindowTextW         = user32.NewProc("GetWindowTextW")
+	procGetOpenFileNameW       = comdlg32.NewProc("GetOpenFileNameW")
+	procLoadCursorW            = user32.NewProc("LoadCursorW")
+	procMessageBoxW            = user32.NewProc("MessageBoxW")
+	procMoveWindow             = user32.NewProc("MoveWindow")
+	procPostMessageW           = user32.NewProc("PostMessageW")
+	procPostQuitMessage        = user32.NewProc("PostQuitMessage")
+	procRegisterClassExW       = user32.NewProc("RegisterClassExW")
+	procSendMessageW           = user32.NewProc("SendMessageW")
+	procSetMenu                = user32.NewProc("SetMenu")
+	procSetWindowTextW         = user32.NewProc("SetWindowTextW")
+	procShowWindow             = user32.NewProc("ShowWindow")
+	procTranslateMessage       = user32.NewProc("TranslateMessage")
+	procUpdateWindow           = user32.NewProc("UpdateWindow")
+	procInvalidateRect         = user32.NewProc("InvalidateRect")
+	procSetScrollRange         = user32.NewProc("SetScrollRange")
+	procSetScrollPos           = user32.NewProc("SetScrollPos")
+	procGetScrollPos           = user32.NewProc("GetScrollPos")
+	procSHBrowseForFolderW     = shell32.NewProc("SHBrowseForFolderW")
+	procSHGetPathFromIDListW   = shell32.NewProc("SHGetPathFromIDListW")
+	procCoTaskMemFree          = ole32.NewProc("CoTaskMemFree")
+	gdi32                      = syscall.NewLazyDLL("gdi32.dll")
+	procCreateSolidBrush       = gdi32.NewProc("CreateSolidBrush")
+	procDeleteObject           = gdi32.NewProc("DeleteObject")
+	procFillRect               = user32.NewProc("FillRect")
+	procSelectObject           = gdi32.NewProc("SelectObject")
+	procSetBkMode              = gdi32.NewProc("SetBkMode")
+	procSetBkColor             = gdi32.NewProc("SetBkColor")
+	procSetTextColor           = gdi32.NewProc("SetTextColor")
+	procTextOutW               = gdi32.NewProc("TextOutW")
+	procCreateFontW            = gdi32.NewProc("CreateFontW")
+	procGetStockObject         = gdi32.NewProc("GetStockObject")
+	procDwmSetWindowAttribute  = dwmapi.NewProc("DwmSetWindowAttribute")
+	procSetPreferredAppMode    = uxtheme.NewProc("SetPreferredAppMode")
+	procFlushMenuThemes        = uxtheme.NewProc("FlushMenuThemes")
 	procAllowDarkModeForWindow = uxtheme.NewProc("AllowDarkModeForWindow")
 )
 
@@ -189,11 +193,11 @@ const (
 	DWMWA_CAPTION_COLOR           = 35
 	DWMWA_TEXT_COLOR              = 36
 
-	APPMODE_DEFAULT      = 0
-	APPMODE_ALLOWDARK    = 1
-	APPMODE_FORCEDARK    = 2
-	APPMODE_FORCELIGHT   = 3
-	APPMODE_MAX          = 4
+	APPMODE_DEFAULT    = 0
+	APPMODE_ALLOWDARK  = 1
+	APPMODE_FORCEDARK  = 2
+	APPMODE_FORCELIGHT = 3
+	APPMODE_MAX        = 4
 
 	OFN_EXPLORER      = 0x00080000
 	OFN_FILEMUSTEXIST = 0x00001000
@@ -305,6 +309,7 @@ type frontendApp struct {
 	paths         projectruntime.Paths
 	menuState     ui.BrowserMenuState
 	profileMW     ui.BrowserProfileMiddleware
+	installMW     ui.BrowserInstallMiddleware
 	todo          *ui.TodoList
 	downloadDir   string
 	concurrency   int
@@ -320,6 +325,7 @@ type frontendApp struct {
 	addTaskBtn     HWND
 	startTasksBtn  HWND
 	refreshBtn     HWND
+	actionProgress HWND
 	taskTitle      HWND
 	taskBoard      HWND
 	infoTitle      HWND
@@ -328,6 +334,9 @@ type frontendApp struct {
 
 	taskScrollY  int
 	taskContentH int
+
+	actionProgressValue float64
+	actionProgressText  string
 
 	mu     sync.RWMutex
 	status string
@@ -344,6 +353,9 @@ func main() {
 		log.Fatalf("resolve workspace root: %v", err)
 	}
 	app = newFrontendApp(workspaceRoot)
+	app.todo.SetNotifier(func() {
+		app.post(msgRefreshTasks)
+	})
 	if err := app.run(); err != nil {
 		log.Fatal(err)
 	}
@@ -354,6 +366,8 @@ func newFrontendApp(workspaceRoot string) *frontendApp {
 	_ = paths.Ensure()
 	menu := ui.DefaultBrowserMenuState().
 		WithFirefoxExecutablePath(projectruntime.DefaultFirefoxExecutablePath(paths.Root)).
+		WithChromiumInstallRoot(projectruntime.DefaultChromiumInstallDir(paths.Root)).
+		WithFirefoxInstallRoot(projectruntime.DefaultFirefoxInstallDir(paths.Root)).
 		WithFirefoxMotherProfileDir(projectruntime.DefaultFirefoxProfileSourceDir()).
 		WithFirefoxWorkingProfileDir(paths.BrowserBaseline)
 	return &frontendApp{
@@ -361,6 +375,7 @@ func newFrontendApp(workspaceRoot string) *frontendApp {
 		paths:         paths,
 		menuState:     menu,
 		profileMW:     ui.NewBrowserProfileMiddleware(workspaceRoot),
+		installMW:     ui.NewBrowserInstallMiddleware(workspaceRoot),
 		todo:          ui.NewTodoList(),
 		downloadDir:   paths.OutputRoot,
 		concurrency:   1,
@@ -376,6 +391,9 @@ func (a *frontendApp) run() error {
 	enableDarkAppMode()
 	hInstance, _, _ := procGetModuleHandleW.Call(0)
 	if err := registerTaskBoardClass(HINSTANCE(hInstance)); err != nil {
+		return err
+	}
+	if err := registerActionProgressClass(HINSTANCE(hInstance)); err != nil {
 		return err
 	}
 	className, err := utf16Ptr(windowClassName)
@@ -487,6 +505,9 @@ func windowProc(hwnd HWND, msg uint32, wParam, lParam uintptr) uintptr {
 	case msgRefreshStatus:
 		app.refreshStatus()
 		return 0
+	case msgRefreshAction:
+		app.refreshActionProgress()
+		return 0
 	case WM_DESTROY:
 		procPostQuitMessage.Call(0)
 		return 0
@@ -502,6 +523,8 @@ func (a *frontendApp) attachMenu(hwnd HWND) {
 	taskMenu, _, _ := procCreatePopupMenu.Call()
 
 	addMenuItem(browserMenu, menuIDSetExecutable, "\u8bbe\u7f6e Firefox \u53ef\u6267\u884c\u6587\u4ef6...")
+	addMenuItem(browserMenu, menuIDSetChromium, "\u8bbe\u7f6e Chromium \u53ef\u6267\u884c\u6587\u4ef6...")
+	addMenuItem(browserMenu, menuIDInstallBrowsers, "\u5b89\u88c5\u6d4f\u89c8\u5668...")
 	addMenuItem(browserMenu, menuIDSetMother, "\u8bbe\u7f6e Firefox \u6bcd\u914d\u7f6e\u76ee\u5f55...")
 	addMenuItem(browserMenu, menuIDRefreshProfile, "\u5173\u95ed\u6d4f\u89c8\u5668\u5e76\u5237\u65b0\u914d\u7f6e")
 	addMenuItem(settingsMenu, menuIDSetDownloadDir, "\u8bbe\u7f6e\u4e0b\u8f7d\u76ee\u5f55...")
@@ -535,6 +558,7 @@ func (a *frontendApp) createControls(hwnd HWND) {
 		w, h    int32
 		id      int
 	}{
+		{class: "ActionProgressControl", text: "", style: WS_CHILD | WS_VISIBLE, x: 20, y: 8, w: 1240, h: 22, id: controlIDActionProgress},
 		{class: "Edit", text: "请输入漫画 URL", style: WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN, exStyle: WS_EX_CLIENTEDGE, x: 20, y: 44, w: 980, h: 38, id: controlIDURLEdit},
 		{class: "Button", text: "添加任务", style: WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | WS_TABSTOP, x: 900, y: 44, w: 120, h: 38, id: controlIDAddTask},
 		{class: "Static", text: "任务列表", style: WS_CHILD | WS_VISIBLE, x: 20, y: 106, w: 120, h: 20, id: controlIDTaskTitle},
@@ -566,6 +590,8 @@ func (a *frontendApp) createControls(hwnd HWND) {
 			continue
 		}
 		switch c.id {
+		case controlIDActionProgress:
+			a.actionProgress = HWND(hwndChild)
 		case controlIDURLEdit:
 			a.urlEdit = HWND(hwndChild)
 		case controlIDAddTask:
@@ -581,12 +607,13 @@ func (a *frontendApp) createControls(hwnd HWND) {
 		case controlIDStatusText:
 			a.statusText = HWND(hwndChild)
 		}
-		if c.id == controlIDURLEdit || c.id == controlIDAddTask {
+		if c.id == controlIDURLEdit || c.id == controlIDAddTask || c.id == controlIDActionProgress {
 			setControlFont(HWND(hwndChild), rowFont)
 		} else {
 			setControlFont(HWND(hwndChild), uiFont)
 		}
 	}
+	a.setActionProgress(0, "")
 	setControlFont(a.taskTitle, uiFont)
 	setControlFont(a.taskBoard, uiFont)
 	setControlFont(a.infoTitle, uiFont)
@@ -604,9 +631,10 @@ func (a *frontendApp) layout() {
 
 	padding := int32(20)
 	addW := int32(120)
+	move(a.actionProgress, padding, 8, width-padding*2, 22)
 	move(a.urlEdit, 20, 44, max32(260, width-140), 38)
 	move(a.addTaskBtn, max32(20, width-140), 44, addW, 38)
-	adjustURLInputTextRect(a.urlEdit, 8, 8, 8, 4)
+	adjustURLInputTextRect(a.urlEdit, 8, 9, 8, 3)
 	taskTop := int32(128)
 	taskH := max32(160, height-380)
 	taskBottom := taskTop + taskH
@@ -647,6 +675,10 @@ func (a *frontendApp) handleCommand(id uint16) {
 	switch id {
 	case menuIDSetExecutable:
 		a.pickFirefoxExecutable()
+	case menuIDSetChromium:
+		a.pickChromiumExecutable()
+	case menuIDInstallBrowsers:
+		a.installBrowsersAsync()
 	case menuIDSetMother:
 		a.pickFirefoxMotherProfile()
 	case menuIDRefreshProfile:
@@ -697,6 +729,78 @@ func (a *frontendApp) pickFirefoxExecutable() {
 	a.mu.Unlock()
 	a.setStatus("Firefox executable set: %s", path)
 	a.post(msgRefreshInfo)
+}
+
+func (a *frontendApp) pickChromiumExecutable() {
+	path, err := openFileDialog(a.hwnd, "Select Chromium executable", "Executable Files (*.exe)\x00*.exe\x00All Files (*.*)\x00*.*\x00\x00", a.menuState.ChromiumExecutablePath)
+	if err != nil {
+		a.setStatus("select Chromium executable failed: %v", err)
+		return
+	}
+	if strings.TrimSpace(path) == "" {
+		a.setStatus("Chromium executable unchanged")
+		return
+	}
+	a.mu.Lock()
+	a.menuState = a.menuState.WithChromiumExecutablePath(path)
+	a.mu.Unlock()
+	a.setStatus("Chromium executable set: %s", path)
+	a.post(msgRefreshInfo)
+}
+
+func (a *frontendApp) installBrowsersAsync() {
+	go func() {
+		path, err := browseFolderDialog(a.hwnd, "Select browser install directory", a.defaultBrowserInstallRoot())
+		if err != nil {
+			a.setStatus("select browser install directory failed: %v", err)
+			return
+		}
+		if strings.TrimSpace(path) == "" {
+			a.setStatus("browser install directory unchanged")
+			return
+		}
+		a.setActionProgress(0.05, "选择目录")
+		a.setStatus("installing browsers into %s ...", path)
+		a.mu.RLock()
+		stateSnapshot := a.menuState
+		a.mu.RUnlock()
+		newState, result, err := a.installMW.InstallAllBrowsersAndApply(stateSnapshot, path, func(update projectruntime.BrowserInstallProgress) {
+			phase := strings.TrimSpace(update.Phase)
+			message := strings.TrimSpace(update.Message)
+			label := "安装浏览器"
+			if update.Browser != "" {
+				label = browserTypeLabel(update.Browser)
+			}
+			if phase != "" {
+				if message != "" {
+					a.setActionProgress(update.Fraction, label+" "+phase)
+					a.setStatus("%s: %s", label, message)
+					return
+				}
+				a.setActionProgress(update.Fraction, label+" "+phase)
+				a.setStatus("%s: %s", label, phase)
+				return
+			}
+			if message != "" {
+				a.setActionProgress(update.Fraction, label)
+				a.setStatus("%s: %s", label, message)
+				return
+			}
+			a.setActionProgress(update.Fraction, label)
+		})
+		if err != nil {
+			a.setActionProgress(1, "失败")
+			a.setStatus("install browsers failed: %v", err)
+			return
+		}
+		a.mu.Lock()
+		a.menuState = newState
+		a.mu.Unlock()
+		a.setActionProgress(1, "完成")
+		a.setStatus("installed browsers into %s", result.TargetRoot)
+		msgBox(a.hwnd, "Browsers installed successfully\r\n\r\n"+result.TargetRoot, "Success")
+		a.post(msgRefreshInfo)
+	}()
 }
 
 func (a *frontendApp) pickFirefoxMotherProfile() {
@@ -795,6 +899,7 @@ func (a *frontendApp) addPendingTask() {
 		Headless:     false,
 		RuntimeRoot:  a.paths.Root,
 		BrowserPath:  a.menuState.FirefoxExecutablePath,
+		DriverDir:    a.menuState.PlaywrightDriverDir,
 		ProfileDir:   a.menuState.FirefoxWorkingProfileDir,
 		UserDataDir:  a.menuState.FirefoxWorkingProfileDir,
 		UserAgent:    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0",
@@ -802,10 +907,17 @@ func (a *frontendApp) addPendingTask() {
 		OutputDir:    a.downloadDir,
 	}
 	a.mu.RUnlock()
-	item := a.todo.AddPending(req)
-	a.setStatus("added pending task %s", item.ID)
-	a.post(msgRefreshTasks)
-	a.post(msgRefreshInfo)
+	a.setStatus("starting task...")
+	go func() {
+		item, err := a.todo.RunImmediately(req, nil)
+		if err != nil {
+			a.setStatus("task %s failed: %v", item.ID, err)
+		} else {
+			a.setStatus("task %s completed", item.ID)
+		}
+		a.post(msgRefreshTasks)
+		a.post(msgRefreshInfo)
+	}()
 }
 
 func (a *frontendApp) startPendingAsync() {
@@ -831,16 +943,20 @@ func (a *frontendApp) startPendingAsync() {
 
 func (a *frontendApp) syncWorkingProfileAsync() {
 	go func() {
+		a.setActionProgress(0.08, "\u7b49\u5f85\u6d4f\u89c8\u5668\u5173\u95ed")
 		a.setStatus("waiting for browser to close and copying profile...")
 		mother := a.currentMotherProfileDir()
+		a.setActionProgress(0.35, "\u590d\u5236\u5b50\u914d\u7f6e")
 		result, err := a.profileMW.CloseCurrentBrowserAndCopyFirefoxProfileFromSource(mother, 250*time.Millisecond)
 		if err != nil {
+			a.setActionProgress(1, "\u5931\u8d25")
 			a.setStatus("refresh profile failed: %v", err)
 			return
 		}
 		a.mu.Lock()
 		a.menuState = a.menuState.WithFirefoxWorkingProfileDir(result.TargetProfileDir)
 		a.mu.Unlock()
+		a.setActionProgress(1, "\u5b8c\u6210")
 		a.setStatus("profile refreshed: %s", result.TargetProfileDir)
 		msgBox(a.hwnd, "Profile refreshed successfully\r\n\r\n"+result.TargetProfileDir, "Success")
 		a.post(msgRefreshTasks)
@@ -848,10 +964,54 @@ func (a *frontendApp) syncWorkingProfileAsync() {
 	}()
 }
 
+func (a *frontendApp) setActionProgress(value float64, text string) {
+	a.mu.Lock()
+	a.actionProgressValue = clamp01(value)
+	a.actionProgressText = text
+	a.mu.Unlock()
+	a.post(msgRefreshAction)
+}
+
+func (a *frontendApp) refreshActionProgress() {
+	if a.actionProgress == 0 {
+		return
+	}
+	procInvalidateRect.Call(uintptr(a.actionProgress), 0, 1)
+}
+
+func (a *frontendApp) actionProgressSnapshot() (float64, string) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.actionProgressValue, a.actionProgressText
+}
+
 func (a *frontendApp) currentMotherProfileDir() string {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return a.menuState.FirefoxMotherProfileDir
+}
+
+func (a *frontendApp) defaultBrowserInstallRoot() string {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if strings.TrimSpace(a.menuState.FirefoxInstallRoot) != "" {
+		return a.menuState.FirefoxInstallRoot
+	}
+	if strings.TrimSpace(a.menuState.ChromiumInstallRoot) != "" {
+		return a.menuState.ChromiumInstallRoot
+	}
+	return projectruntime.DefaultFirefoxInstallDir(a.paths.Root)
+}
+
+func browserTypeLabel(browserType projectruntime.BrowserType) string {
+	switch browserType {
+	case projectruntime.BrowserTypeChromium:
+		return "Chromium"
+	case projectruntime.BrowserTypeFirefox:
+		return "Firefox"
+	default:
+		return string(browserType)
+	}
 }
 
 func (a *frontendApp) post(msg uint32) {
@@ -891,7 +1051,11 @@ func (a *frontendApp) refreshInfo() {
 	a.mu.RUnlock()
 	info := strings.Join([]string{
 		"\u6d4f\u89c8\u5668\u8bbe\u7f6e",
+		"  Chromium \u5b89\u88c5\u76ee\u5f55: " + menu.ChromiumInstallRoot,
+		"  Chromium \u53ef\u6267\u884c\u6587\u4ef6: " + menu.ChromiumExecutablePath,
+		"  Playwright driver: " + menu.PlaywrightDriverDir,
 		"  \u706b\u72d0\u53ef\u6267\u884c\u6587\u4ef6: " + menu.FirefoxExecutablePath,
+		"  \u6d4f\u89c8\u5668\u5b89\u88c5\u76ee\u5f55: " + menu.FirefoxInstallRoot,
 		"  \u706b\u72d0\u6bcd\u914d\u7f6e\u76ee\u5f55: " + menu.FirefoxMotherProfileDir,
 		"  \u706b\u72d0\u5de5\u4f5c\u914d\u7f6e: " + menu.FirefoxWorkingProfileDir,
 		"  \u4e0b\u8f7d\u76ee\u5f55: " + a.downloadDir,

@@ -3,10 +3,12 @@ package ui
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"comic_downloader_go_playwright_stealth/runtime"
+	"comic_downloader_go_playwright_stealth/siteflow/zeri"
 	"comic_downloader_go_playwright_stealth/tasks"
 )
 
@@ -22,21 +24,27 @@ const (
 
 // TodoItem is one item in the frontend todo list.
 type TodoItem struct {
-	ID         string                     `json:"id"`
-	Request    tasks.BrowserLaunchRequest `json:"request"`
-	Status     TodoStatus                 `json:"status"`
-	CreatedAt  time.Time                  `json:"createdAt"`
-	StartedAt  time.Time                  `json:"startedAt"`
-	FinishedAt time.Time                  `json:"finishedAt"`
-	Result     tasks.BrowserRunResult     `json:"result,omitempty"`
-	LastError  string                     `json:"lastError,omitempty"`
+	ID          string                     `json:"id"`
+	Request     tasks.BrowserLaunchRequest `json:"request"`
+	Status      TodoStatus                 `json:"status"`
+	Progress    float64                    `json:"progress,omitempty"`
+	Phase       string                     `json:"phase,omitempty"`
+	StepCurrent int                        `json:"stepCurrent,omitempty"`
+	StepTotal   int                        `json:"stepTotal,omitempty"`
+	StepMessage string                     `json:"stepMessage,omitempty"`
+	CreatedAt   time.Time                  `json:"createdAt"`
+	StartedAt   time.Time                  `json:"startedAt"`
+	FinishedAt  time.Time                  `json:"finishedAt"`
+	Result      tasks.BrowserRunResult     `json:"result,omitempty"`
+	LastError   string                     `json:"lastError,omitempty"`
 }
 
 // TodoList manages items that are added as pending and started later in batch.
 type TodoList struct {
-	mu    sync.Mutex
-	seq   int
-	items []TodoItem
+	mu       sync.Mutex
+	seq      int
+	items    []TodoItem
+	notifier func()
 }
 
 // NewTodoList builds an empty todo list.
@@ -44,19 +52,32 @@ func NewTodoList() *TodoList {
 	return &TodoList{}
 }
 
+// SetNotifier sets a callback that is invoked whenever the list changes.
+func (l *TodoList) SetNotifier(fn func()) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.notifier = fn
+}
+
 // AddPending appends one browser request in pending state.
 func (l *TodoList) AddPending(req tasks.BrowserLaunchRequest) TodoItem {
 	req = req.Normalize()
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	l.seq++
 	item := TodoItem{
 		ID:        fmt.Sprintf("todo-%03d", l.seq),
 		Request:   req,
 		Status:    TodoStatusPending,
+		Progress:  0,
+		Phase:     "pending",
 		CreatedAt: time.Now().UTC(),
 	}
 	l.items = append(l.items, item)
+	notifier := l.notifier
+	l.mu.Unlock()
+	if notifier != nil {
+		notifier()
+	}
 	return item
 }
 
@@ -85,7 +106,6 @@ func (l *TodoList) Pending() []TodoItem {
 // ClearFinished removes completed and failed items from the list.
 func (l *TodoList) ClearFinished() int {
 	l.mu.Lock()
-	defer l.mu.Unlock()
 	kept := l.items[:0]
 	removed := 0
 	for _, item := range l.items {
@@ -97,6 +117,11 @@ func (l *TodoList) ClearFinished() int {
 		}
 	}
 	l.items = kept
+	notifier := l.notifier
+	l.mu.Unlock()
+	if notifier != nil {
+		notifier()
+	}
 	return removed
 }
 
@@ -113,6 +138,65 @@ func (l *TodoList) WaitForBrowserClose(workspaceRoot string, pollInterval time.D
 // TodoRunner runs one browser request.
 type TodoRunner func(tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error)
 
+// RunImmediately appends one request as running, executes it, and updates the item in place.
+func (l *TodoList) RunImmediately(req tasks.BrowserLaunchRequest, runner TodoRunner) (TodoItem, error) {
+	if runner == nil {
+		runner = tasks.RunBrowserRequest
+	}
+	req = req.Normalize()
+
+	l.mu.Lock()
+	l.seq++
+	item := TodoItem{
+		ID:        fmt.Sprintf("todo-%03d", l.seq),
+		Request:   req,
+		Status:    TodoStatusRunning,
+		Progress:  0,
+		Phase:     "running",
+		CreatedAt: time.Now().UTC(),
+		StartedAt: time.Now().UTC(),
+	}
+	l.items = append(l.items, item)
+	index := len(l.items) - 1
+	notifier := l.notifier
+	l.mu.Unlock()
+
+	req.WorkerID = "ui"
+	req.TaskID = item.ID
+	req.Progress = l.makeProgressUpdater(index)
+	result, err := runner(req)
+
+	l.mu.Lock()
+	item = l.items[index]
+	item.FinishedAt = time.Now().UTC()
+	if err != nil {
+		item.Status = TodoStatusFailed
+		item.Progress = 1
+		item.Phase = "failed"
+		item.StepMessage = err.Error()
+		item.LastError = err.Error()
+		l.items[index] = item
+		l.mu.Unlock()
+		if notifier != nil {
+			notifier()
+		}
+		return item, err
+	}
+	item.Status = TodoStatusCompleted
+	item.Progress = 1
+	item.Phase = "completed"
+	item.StepCurrent = item.StepTotal
+	item.StepMessage = "completed"
+	item.Result = result
+	item.LastError = ""
+	l.items[index] = item
+	l.mu.Unlock()
+	if notifier != nil {
+		notifier()
+	}
+	return item, nil
+}
+
 // StartAllUnfinishedAfterBrowserClose waits for the browser session lock to disappear, then starts all pending items.
 func (l *TodoList) StartAllUnfinishedAfterBrowserClose(workspaceRoot string, pollInterval time.Duration, runner TodoRunner) ([]TodoItem, error) {
 	if runner == nil {
@@ -127,14 +211,12 @@ func (l *TodoList) StartAllUnfinishedAfterBrowserClose(workspaceRoot string, pol
 	return l.startAllPending(runner)
 }
 
-// StartAllUnfinished starts all pending items immediately. It returns an error if a browser session is still running.
+// StartAllUnfinished starts all pending items immediately.
 func (l *TodoList) StartAllUnfinished(workspaceRoot string, runner TodoRunner) ([]TodoItem, error) {
 	if runner == nil {
 		runner = tasks.RunBrowserRequest
 	}
-	if runtime.BrowserSessionLocked(runtime.NewPaths(workspaceRoot).Root) {
-		return nil, errors.New("browser is running; close the current browser window before starting unfinished tasks")
-	}
+	_ = workspaceRoot
 	return l.startAllPending(runner)
 }
 
@@ -155,20 +237,40 @@ func (l *TodoList) startAllPending(runner TodoRunner) ([]TodoItem, error) {
 		item := l.items[index]
 		item.Status = TodoStatusRunning
 		item.StartedAt = time.Now().UTC()
+		item.Progress = 0
+		item.Phase = "running"
+		item.StepCurrent = 0
+		item.StepTotal = 0
+		item.StepMessage = ""
 		l.items[index] = item
+		notifier := l.notifier
 		l.mu.Unlock()
 
-		result, err := runner(item.Request)
+		req := item.Request
+		if strings.TrimSpace(req.WorkerID) == "" {
+			req.WorkerID = "ui"
+		}
+		if strings.TrimSpace(req.TaskID) == "" {
+			req.TaskID = item.ID
+		}
+		req.Progress = l.makeProgressUpdater(index)
+		result, err := runner(req)
 
 		l.mu.Lock()
 		item = l.items[index]
 		item.FinishedAt = time.Now().UTC()
 		if err != nil {
 			item.Status = TodoStatusFailed
+			item.Progress = 1
+			item.Phase = "failed"
+			item.StepMessage = err.Error()
 			item.LastError = err.Error()
 			l.items[index] = item
 			l.mu.Unlock()
 			results = append(results, item)
+			if notifier != nil {
+				notifier()
+			}
 			if runErr == nil {
 				runErr = err
 			} else {
@@ -177,12 +279,59 @@ func (l *TodoList) startAllPending(runner TodoRunner) ([]TodoItem, error) {
 			continue
 		}
 		item.Status = TodoStatusCompleted
+		item.Progress = 1
+		item.Phase = "completed"
+		item.StepCurrent = item.StepTotal
+		item.StepMessage = "completed"
 		item.Result = result
 		item.LastError = ""
 		l.items[index] = item
 		l.mu.Unlock()
+		if notifier != nil {
+			notifier()
+		}
 
 		results = append(results, item)
 	}
 	return results, runErr
+}
+
+func (l *TodoList) makeProgressUpdater(index int) func(zeri.DownloadProgress) {
+	return func(update zeri.DownloadProgress) {
+		l.mu.Lock()
+		if index < 0 || index >= len(l.items) {
+			l.mu.Unlock()
+			return
+		}
+		item := l.items[index]
+		if update.Fraction >= 0 {
+			item.Progress = clamp01(update.Fraction)
+		}
+		if update.Total > 0 {
+			item.StepCurrent = update.Current
+			item.StepTotal = update.Total
+		}
+		if strings.TrimSpace(update.Phase) != "" {
+			item.Phase = update.Phase
+		}
+		if strings.TrimSpace(update.Message) != "" {
+			item.StepMessage = update.Message
+		}
+		l.items[index] = item
+		notifier := l.notifier
+		l.mu.Unlock()
+		if notifier != nil {
+			notifier()
+		}
+	}
+}
+
+func clamp01(v float64) float64 {
+	if v < 0 {
+		return 0
+	}
+	if v > 1 {
+		return 1
+	}
+	return v
 }

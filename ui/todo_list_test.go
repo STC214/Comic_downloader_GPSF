@@ -2,7 +2,6 @@ package ui
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -23,6 +22,25 @@ func TestTodoListAddsPendingItems(t *testing.T) {
 	}
 	if len(list.Pending()) != 1 {
 		t.Fatalf("len(Pending()) = %d, want 1", len(list.Pending()))
+	}
+}
+
+func TestTodoListRunImmediatelyCompletesItem(t *testing.T) {
+	list := NewTodoList()
+	item, err := list.RunImmediately(tasks.BrowserLaunchRequest{URL: "https://example.com"}, func(req tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error) {
+		return tasks.BrowserRunResult{URL: req.URL, Title: "ok"}, nil
+	})
+	if err != nil {
+		t.Fatalf("RunImmediately() error = %v", err)
+	}
+	if item.Status != TodoStatusCompleted {
+		t.Fatalf("item.Status = %q, want completed", item.Status)
+	}
+	if item.Result.Title != "ok" {
+		t.Fatalf("item.Result.Title = %q, want ok", item.Result.Title)
+	}
+	if len(list.Items()) != 1 {
+		t.Fatalf("len(Items()) = %d, want 1", len(list.Items()))
 	}
 }
 
@@ -80,7 +98,7 @@ func TestTodoListWaitsForBrowserLockBeforeStarting(t *testing.T) {
 	}
 }
 
-func TestTodoListStartAllReturnsErrorWhenBrowserBusy(t *testing.T) {
+func TestTodoListStartAllDoesNotCheckBrowserLock(t *testing.T) {
 	workspace := t.TempDir()
 	t.Setenv("APPDATA", filepath.Join(workspace, "AppData", "Roaming"))
 	t.Setenv("LOCALAPPDATA", filepath.Join(workspace, "AppData", "Local"))
@@ -97,14 +115,17 @@ func TestTodoListStartAllReturnsErrorWhenBrowserBusy(t *testing.T) {
 		_ = release()
 	}()
 
-	_, err = list.StartAllUnfinished(workspace, func(req tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error) {
-		return tasks.BrowserRunResult{}, nil
+	items, err := list.StartAllUnfinished(workspace, func(req tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error) {
+		return tasks.BrowserRunResult{URL: req.URL, Title: "ok"}, nil
 	})
-	if err == nil {
-		t.Fatal("StartAllUnfinished() error = nil, want browser busy error")
+	if err != nil {
+		t.Fatalf("StartAllUnfinished() error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "browser is running") {
-		t.Fatalf("busy error = %v, want browser is running message", err)
+	if len(items) != 1 {
+		t.Fatalf("len(items) = %d, want 1", len(items))
+	}
+	if items[0].Status != TodoStatusCompleted {
+		t.Fatalf("items[0].Status = %q, want completed", items[0].Status)
 	}
 }
 

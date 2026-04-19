@@ -36,3 +36,15 @@ func sessionTitle(s *FirefoxSession) (string, error) {
 func waitFirefoxSessionClosed(s *FirefoxSession) error {
 	return errors.New("playwright runtime is disabled in this build; use -tags playwright")
 }
+
+func sessionContent(s *FirefoxSession) (string, error) {
+	return "", errors.New("playwright runtime is disabled in this build; use -tags playwright")
+}
+
+func sessionGoto(s *FirefoxSession, url string) error {
+	return errors.New("playwright runtime is disabled in this build; use -tags playwright")
+}
+
+func sessionClickText(s *FirefoxSession, text string) error {
+	return errors.New("playwright runtime is disabled in this build; use -tags playwright")
+}
