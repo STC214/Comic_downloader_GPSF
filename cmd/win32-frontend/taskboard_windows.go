@@ -147,6 +147,8 @@ func taskBoardPaint(hwnd HWND) {
 	defer procDeleteObject.Call(brushBarBg)
 	brushPending, _, _ := procCreateSolidBrush.Call(uintptr(rgb(96, 118, 140)))
 	defer procDeleteObject.Call(brushPending)
+	brushWait, _, _ := procCreateSolidBrush.Call(uintptr(rgb(148, 132, 74)))
+	defer procDeleteObject.Call(brushWait)
 	brushDone, _, _ := procCreateSolidBrush.Call(uintptr(rgb(84, 138, 92)))
 	defer procDeleteObject.Call(brushDone)
 	brushFail, _, _ := procCreateSolidBrush.Call(uintptr(rgb(182, 82, 82)))
@@ -173,11 +175,11 @@ func taskBoardPaint(hwnd HWND) {
 		if bottom < 0 || top > int(rc.Bottom) {
 			continue
 		}
-		drawTaskCard(HDC(hdc), width, top, item, brushCard, brushThumb, brushBorder, brushBarBg, brushPending, brushDone, brushFail)
+		drawTaskCard(HDC(hdc), width, top, item, brushCard, brushThumb, brushBorder, brushBarBg, brushPending, brushWait, brushDone, brushFail)
 	}
 }
 
-func drawTaskCard(hdc HDC, width, top int, item ui.TodoItem, brushCard, brushThumb, brushBorder, brushBarBg, brushPending, brushDone, brushFail uintptr) {
+func drawTaskCard(hdc HDC, width, top int, item ui.TodoItem, brushCard, brushThumb, brushBorder, brushBarBg, brushPending, brushWait, brushDone, brushFail uintptr) {
 	cardLeft := 10
 	cardTop := top
 	cardWidth := width - 20
@@ -230,6 +232,8 @@ func drawTaskCard(hdc HDC, width, top int, item ui.TodoItem, brushCard, brushThu
 		procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&barRectFill)), brushDone)
 	case ui.TodoStatusFailed:
 		procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&barRectFill)), brushFail)
+	case ui.TodoStatusPaused, ui.TodoStatusWaitingVerification, ui.TodoStatusVerificationCleared:
+		procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&barRectFill)), brushWait)
 	default:
 		procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&barRectFill)), brushPending)
 	}

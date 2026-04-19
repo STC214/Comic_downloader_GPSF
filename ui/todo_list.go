@@ -16,10 +16,16 @@ import (
 type TodoStatus string
 
 const (
-	TodoStatusPending   TodoStatus = "pending"
-	TodoStatusRunning   TodoStatus = "running"
-	TodoStatusCompleted TodoStatus = "completed"
-	TodoStatusFailed    TodoStatus = "failed"
+	TodoStatusPending             TodoStatus = "pending"
+	TodoStatusQueued              TodoStatus = "queued"
+	TodoStatusRouting             TodoStatus = "routing"
+	TodoStatusPreparing           TodoStatus = "preparing"
+	TodoStatusRunning             TodoStatus = "running"
+	TodoStatusPaused              TodoStatus = "paused"
+	TodoStatusWaitingVerification TodoStatus = "waiting_verification"
+	TodoStatusVerificationCleared TodoStatus = "verification_cleared"
+	TodoStatusCompleted           TodoStatus = "completed"
+	TodoStatusFailed              TodoStatus = "failed"
 )
 
 // TodoItem is one item in the frontend todo list.
@@ -123,6 +129,58 @@ func (l *TodoList) ClearFinished() int {
 		notifier()
 	}
 	return removed
+}
+
+// TodoStatusFromTaskState maps the persisted task state into the UI queue state.
+func TodoStatusFromTaskState(state tasks.TaskState) TodoStatus {
+	switch state {
+	case tasks.TaskStateQueued:
+		return TodoStatusQueued
+	case tasks.TaskStateRouting:
+		return TodoStatusRouting
+	case tasks.TaskStatePreparing:
+		return TodoStatusPreparing
+	case tasks.TaskStatePrepared, tasks.TaskStateRunning:
+		return TodoStatusRunning
+	case tasks.TaskStatePaused:
+		return TodoStatusPaused
+	case tasks.TaskStateWaitingVerification:
+		return TodoStatusWaitingVerification
+	case tasks.TaskStateVerificationCleared:
+		return TodoStatusVerificationCleared
+	case tasks.TaskStateCompleted:
+		return TodoStatusCompleted
+	case tasks.TaskStateFailed:
+		return TodoStatusFailed
+	default:
+		return TodoStatusPending
+	}
+}
+
+// TaskStateFromTodoStatus maps the UI queue state back to the persisted task state.
+func TaskStateFromTodoStatus(status TodoStatus) tasks.TaskState {
+	switch status {
+	case TodoStatusQueued:
+		return tasks.TaskStateQueued
+	case TodoStatusRouting:
+		return tasks.TaskStateRouting
+	case TodoStatusPreparing:
+		return tasks.TaskStatePreparing
+	case TodoStatusRunning:
+		return tasks.TaskStateRunning
+	case TodoStatusPaused:
+		return tasks.TaskStatePaused
+	case TodoStatusWaitingVerification:
+		return tasks.TaskStateWaitingVerification
+	case TodoStatusVerificationCleared:
+		return tasks.TaskStateVerificationCleared
+	case TodoStatusCompleted:
+		return tasks.TaskStateCompleted
+	case TodoStatusFailed:
+		return tasks.TaskStateFailed
+	default:
+		return tasks.TaskStatePrepared
+	}
 }
 
 // BrowserRunning reports whether a browser session lock exists.

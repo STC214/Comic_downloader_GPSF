@@ -14,23 +14,31 @@ import (
 
 // TaskView is the UI-ready surface for one task entry.
 type TaskView struct {
-	TaskID        string
-	Title         string
-	Site          string
-	State         string
-	Verification  string
-	PrimaryURL    string
-	OutputRoot    string
-	ThumbnailRoot string
-	StatePath     string
-	ReportPath    string
-	LogPath       string
-	CreatedAt     time.Time
-	StartedAt     time.Time
-	FinishedAt    time.Time
-	LastError     string
-	Blocked       bool
-	AssetCount    int
+	TaskID             string
+	Title              string
+	Site               string
+	State              string
+	Verification       string
+	PrimaryURL         string
+	BrowserType        string
+	BrowserPath        string
+	BrowserMode        string
+	PageType           string
+	OutputRoot         string
+	ThumbnailRoot      string
+	StatePath          string
+	ReportPath         string
+	LogPath            string
+	CreatedAt          time.Time
+	StartedAt          time.Time
+	FinishedAt         time.Time
+	LastError          string
+	Blocked            bool
+	Verified           bool
+	VerificationNeeded bool
+	MatchedMarker      string
+	Note               string
+	AssetCount         int
 }
 
 // TaskDetails is the full UI detail surface for a task.
@@ -54,23 +62,31 @@ func LoadTaskView(reportPath string) (TaskView, error) {
 		return TaskView{}, fmt.Errorf("unmarshal task report %q: %w", reportPath, err)
 	}
 	return TaskView{
-		TaskID:        report.TaskID,
-		Title:         report.Manifest.Title,
-		Site:          report.Manifest.Site,
-		State:         string(report.State),
-		Verification:  string(report.Verification),
-		PrimaryURL:    report.Manifest.PrimaryURL,
-		OutputRoot:    report.OutputRoot,
-		ThumbnailRoot: report.ThumbnailRoot,
-		StatePath:     report.StatePath,
-		ReportPath:    report.ReportPath,
-		LogPath:       report.LogPath,
-		CreatedAt:     report.CreatedAt,
-		StartedAt:     report.StartedAt,
-		FinishedAt:    report.FinishedAt,
-		LastError:     report.LastError,
-		Blocked:       report.Manifest.Blocked,
-		AssetCount:    report.Manifest.AssetCount,
+		TaskID:             report.TaskID,
+		Title:              report.Manifest.Title,
+		Site:               report.Manifest.Site,
+		State:              string(report.State),
+		Verification:       string(report.Verification),
+		PrimaryURL:         report.Manifest.PrimaryURL,
+		BrowserType:        report.BrowserType,
+		BrowserPath:        report.BrowserPath,
+		BrowserMode:        report.BrowserMode,
+		PageType:           report.PageType,
+		OutputRoot:         report.OutputRoot,
+		ThumbnailRoot:      report.ThumbnailRoot,
+		StatePath:          report.StatePath,
+		ReportPath:         report.ReportPath,
+		LogPath:            report.LogPath,
+		CreatedAt:          report.CreatedAt,
+		StartedAt:          report.StartedAt,
+		FinishedAt:         report.FinishedAt,
+		LastError:          report.LastError,
+		Blocked:            report.Manifest.Blocked,
+		Verified:           report.Verified,
+		VerificationNeeded: report.VerificationNeeded,
+		MatchedMarker:      report.MatchedMarker,
+		Note:               report.Note,
+		AssetCount:         report.Manifest.AssetCount,
 	}, nil
 }
 

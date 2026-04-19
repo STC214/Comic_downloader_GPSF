@@ -15,16 +15,25 @@ type BrowserRunResult struct {
 	URL                  string `json:"url"`
 	ResolvedURL          string `json:"resolvedURL,omitempty"`
 	Title                string `json:"title"`
+	BrowserType          string `json:"browserType,omitempty"`
+	BrowserPath          string `json:"browserPath,omitempty"`
+	BrowserMode          string `json:"browserMode,omitempty"`
 	Headless             bool   `json:"headless"`
 	KeepOpen             bool   `json:"keepOpen"`
 	PlaywrightProfileDir string `json:"playwrightProfileDir,omitempty"`
 	Site                 string `json:"site,omitempty"`
+	PageType             string `json:"pageType,omitempty"`
 	ReaderURL            string `json:"readerURL,omitempty"`
 	SummaryPageCount     int    `json:"summaryPageCount,omitempty"`
 	ReaderPageCount      int    `json:"readerPageCount,omitempty"`
 	ReaderImageCount     int    `json:"readerImageCount,omitempty"`
 	ReaderFilteredCount  int    `json:"readerFilteredCount,omitempty"`
 	ReaderActivation     int    `json:"readerActivationClicks,omitempty"`
+	Verified             bool   `json:"verified,omitempty"`
+	VerificationNeeded   bool   `json:"verificationNeeded,omitempty"`
+	Blocked              bool   `json:"blocked,omitempty"`
+	MatchedMarker        string `json:"matchedMarker,omitempty"`
+	Note                 string `json:"note,omitempty"`
 	DownloadedCount      int    `json:"downloadedCount,omitempty"`
 	DownloadedBytes      int64  `json:"downloadedBytes,omitempty"`
 	DownloadedDir        string `json:"downloadedDir,omitempty"`
@@ -148,16 +157,25 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 		URL:                  req.URL,
 		ResolvedURL:          session.PageURL(),
 		Title:                title,
+		BrowserType:          req.BrowserType,
+		BrowserPath:          req.BrowserPath,
+		BrowserMode:          "playwright-persistent",
 		Headless:             req.Headless,
 		KeepOpen:             req.KeepOpen,
 		PlaywrightProfileDir: req.UserDataDir,
 		Site:                 site,
+		PageType:             "content",
 		ReaderURL:            zeriResult.Reader.URL,
 		SummaryPageCount:     zeriResult.Summary.PageCount,
 		ReaderPageCount:      zeriResult.Reader.PageCount,
 		ReaderImageCount:     len(zeriResult.Reader.ImageURLs),
 		ReaderFilteredCount:  len(zeriResult.CollectedImages),
 		ReaderActivation:     zeriResult.ActivationClicks,
+		Verified:             true,
+		VerificationNeeded:   false,
+		Blocked:              false,
+		MatchedMarker:        "",
+		Note:                 "",
 		DownloadedCount:      len(downloadResult.Files),
 		DownloadedBytes:      downloadResult.Bytes,
 		DownloadedDir:        downloadResult.OutputDir,
