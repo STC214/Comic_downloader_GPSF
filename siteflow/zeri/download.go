@@ -52,6 +52,7 @@ func DownloadImages(summary SummaryPage, imageURLs []string, outputRoot string, 
 
 	files := make([]string, 0, len(imageURLs))
 	var totalBytes int64
+	usedNames := make(map[string]int, len(imageURLs))
 	report := func(current int, phase, message string) {
 		if progress == nil {
 			return
@@ -69,10 +70,11 @@ func DownloadImages(summary SummaryPage, imageURLs []string, outputRoot string, 
 			Fraction: fraction,
 		})
 	}
+
 	report(0, "准备", "开始下载")
 	for i, raw := range imageURLs {
 		report(i, "下载中", fmt.Sprintf("%d/%d", i, len(imageURLs)))
-		saved, written, err := downloadOneImage(raw, chapterDir, i+1)
+		saved, written, err := downloadOneImage(raw, chapterDir, i+1, usedNames)
 		if err != nil {
 			return DownloadResult{}, err
 		}
@@ -89,7 +91,7 @@ func DownloadImages(summary SummaryPage, imageURLs []string, outputRoot string, 
 	}, nil
 }
 
-func downloadOneImage(rawURL, outputDir string, index int) (string, int64, error) {
+func downloadOneImage(rawURL, outputDir string, index int, usedNames map[string]int) (string, int64, error) {
 	rawURL = strings.TrimSpace(rawURL)
 	if rawURL == "" {
 		return "", 0, fmt.Errorf("image url is empty")
@@ -112,6 +114,7 @@ func downloadOneImage(rawURL, outputDir string, index int) (string, int64, error
 		return "", 0, fmt.Errorf("download image %q: unexpected status %s", rawURL, resp.Status)
 	}
 
+	baseName := strings.TrimSuffix(filepath.Base(parsed.Path), filepath.Ext(parsed.Path))
 	ext := sanitizeExt(filepath.Ext(parsed.Path))
 	if ext == "" {
 		ext = extFromContentType(resp.Header.Get("Content-Type"))
@@ -119,7 +122,8 @@ func downloadOneImage(rawURL, outputDir string, index int) (string, int64, error
 	if ext == "" {
 		ext = ".jpg"
 	}
-	filename := fmt.Sprintf("%03d%s", index, ext)
+
+	filename := uniqueDownloadFilename(baseName, ext, index, usedNames)
 	targetPath := filepath.Join(outputDir, filename)
 
 	file, err := os.Create(targetPath)
@@ -133,6 +137,23 @@ func downloadOneImage(rawURL, outputDir string, index int) (string, int64, error
 		return "", 0, fmt.Errorf("write image file %q: %w", targetPath, err)
 	}
 	return targetPath, written, nil
+}
+
+func uniqueDownloadFilename(baseName, ext string, index int, usedNames map[string]int) string {
+	baseName = sanitizePathPart(baseName)
+	if baseName == "" {
+		baseName = fmt.Sprintf("%03d", index)
+	}
+	ext = sanitizeExt(ext)
+	if ext == "" {
+		ext = ".jpg"
+	}
+	key := strings.ToLower(baseName + ext)
+	usedNames[key]++
+	if usedNames[key] == 1 {
+		return baseName + ext
+	}
+	return fmt.Sprintf("%s-%d%s", baseName, usedNames[key], ext)
 }
 
 func extFromContentType(contentType string) string {

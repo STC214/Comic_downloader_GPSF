@@ -21,6 +21,9 @@ func main() {
 	driverDir := flag.String("driver-dir", "", "playwright driver directory")
 	profileDir := flag.String("profile-dir", "", "selected browser profile directory")
 	userDataDir := flag.String("user-data-dir", "", "browser profile directory")
+	downloadRoot := flag.String("download-root", "", "download root directory")
+	outputDir := flag.String("output-dir", "", "output directory for downloaded files")
+	launchTimeoutMS := flag.Int("launch-timeout-ms", 120000, "maximum time in milliseconds to wait for browser launch")
 	userAgent := flag.String("user-agent", defaultFirefoxUserAgent, "browser user agent")
 	locale := flag.String("locale", "en-US", "browser locale for stable testing")
 	timezoneID := flag.String("timezone-id", "Asia/Shanghai", "browser timezone for stable testing")
@@ -38,12 +41,15 @@ func main() {
 		URL:                  *url,
 		BrowserType:          *browserType,
 		Headless:             *headless,
+		LaunchTimeoutMS:      *launchTimeoutMS,
 		RuntimeRoot:          *runtimeRoot,
 		BrowserPath:          *browserPath,
 		BrowserInstallDir:    *browsersPath,
 		DriverDir:            *driverDir,
 		ProfileDir:           *profileDir,
 		UserDataDir:          *userDataDir,
+		DownloadRoot:         *downloadRoot,
+		OutputDir:            *outputDir,
 		UserAgent:            *userAgent,
 		Locale:               *locale,
 		TimezoneID:           *timezoneID,

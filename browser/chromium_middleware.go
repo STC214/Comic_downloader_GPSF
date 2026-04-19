@@ -15,6 +15,7 @@ type ChromiumMiddleware struct {
 	downloadRoot      string
 	outputDir         string
 	driverDir         string
+	launchTimeoutMS   int
 	profileDir        string
 	userDataDir       string
 	userAgent         string
@@ -50,6 +51,7 @@ func NewChromiumMiddleware(url string) ChromiumMiddleware {
 		downloadRoot:      "",
 		outputDir:         "",
 		driverDir:         "",
+		launchTimeoutMS:   120000,
 		profileDir:        "",
 		userDataDir:       "",
 		userAgent:         "",
@@ -88,6 +90,14 @@ func (m ChromiumMiddleware) WithOutputDir(outputDir string) ChromiumMiddleware {
 // WithDriverDir sets the Playwright driver directory.
 func (m ChromiumMiddleware) WithDriverDir(driverDir string) ChromiumMiddleware {
 	m.driverDir = normalizePath(driverDir)
+	return m
+}
+
+// WithLaunchTimeoutMS sets the maximum time to wait for Playwright to start the browser.
+func (m ChromiumMiddleware) WithLaunchTimeoutMS(launchTimeoutMS int) ChromiumMiddleware {
+	if launchTimeoutMS >= 0 {
+		m.launchTimeoutMS = launchTimeoutMS
+	}
 	return m
 }
 
@@ -255,6 +265,16 @@ func (m ChromiumMiddleware) resolveDriverDirOrDefault(opts BrowserSessionOptions
 	return projectruntime.DefaultPlaywrightDriverDir(m.RuntimeRoot())
 }
 
+func (m ChromiumMiddleware) resolveLaunchTimeoutMS(opts BrowserSessionOptions) int {
+	if opts.LaunchTimeoutMS >= 0 {
+		return opts.LaunchTimeoutMS
+	}
+	if m.launchTimeoutMS >= 0 {
+		return m.launchTimeoutMS
+	}
+	return 120000
+}
+
 func (m ChromiumMiddleware) resolveLocale(opts BrowserSessionOptions) string {
 	if trimmed := strings.TrimSpace(opts.Locale); trimmed != "" {
 		return trimmed
@@ -291,21 +311,22 @@ func (m ChromiumMiddleware) resolveViewport(opts BrowserSessionOptions) (int, in
 func (m ChromiumMiddleware) LaunchSpec(opts BrowserSessionOptions) LaunchSpec {
 	width, height := m.resolveViewport(opts)
 	return LaunchSpec{
-		BrowserType:    m.BrowserType(),
-		BrowserPath:    m.BrowserPath(),
-		StealthScript:  m.StealthScript(),
-		RuntimeRoot:    m.RuntimeRoot(),
-		URL:            m.resolveURL(opts),
-		ProfileDir:     m.resolveProfileDir(opts),
-		UserDataDir:    m.resolveUserDataDir(opts),
-		UserAgent:      m.resolveUserAgent(opts),
-		Locale:         m.resolveLocale(opts),
-		TimezoneID:     m.resolveTimezoneID(opts),
-		ViewportWidth:  width,
-		ViewportHeight: height,
-		Headless:       m.resolveHeadless(opts),
-		Adblock:        m.adblock,
-		DriverDir:      m.resolveDriverDirOrDefault(opts),
+		BrowserType:     m.BrowserType(),
+		BrowserPath:     m.BrowserPath(),
+		StealthScript:   m.StealthScript(),
+		RuntimeRoot:     m.RuntimeRoot(),
+		URL:             m.resolveURL(opts),
+		ProfileDir:      m.resolveProfileDir(opts),
+		UserDataDir:     m.resolveUserDataDir(opts),
+		UserAgent:       m.resolveUserAgent(opts),
+		Locale:          m.resolveLocale(opts),
+		TimezoneID:      m.resolveTimezoneID(opts),
+		ViewportWidth:   width,
+		ViewportHeight:  height,
+		Headless:        m.resolveHeadless(opts),
+		Adblock:         m.adblock,
+		DriverDir:       m.resolveDriverDirOrDefault(opts),
+		LaunchTimeoutMS: m.resolveLaunchTimeoutMS(opts),
 	}
 }
 

@@ -18,6 +18,7 @@ type BrowserLaunchRequest struct {
 	URL                  string                      `json:"url"`
 	BrowserType          string                      `json:"browserType"`
 	Headless             bool                        `json:"headless"`
+	LaunchTimeoutMS      int                         `json:"launchTimeoutMs"`
 	RuntimeRoot          string                      `json:"runtimeRoot"`
 	BrowserPath          string                      `json:"browserPath"`
 	BrowserInstallDir    string                      `json:"browserInstallDir"`
@@ -45,8 +46,14 @@ func (r BrowserLaunchRequest) Normalize() BrowserLaunchRequest {
 	if strings.TrimSpace(r.RuntimeRoot) == "" {
 		r.RuntimeRoot = "runtime"
 	}
+	if r.LaunchTimeoutMS <= 0 {
+		r.LaunchTimeoutMS = 120000
+	}
 	r.URL = strings.TrimSpace(r.URL)
 	r.BrowserType = normalizeBrowserType(r.BrowserType)
+	if zeri.IsZeriURL(r.URL) {
+		r.BrowserType = string(projectruntime.BrowserTypeFirefox)
+	}
 	r.BrowserInstallDir = strings.TrimSpace(r.BrowserInstallDir)
 	if r.BrowserInstallDir == "" && r.BrowserType == string(projectruntime.BrowserTypeChromium) {
 		r.BrowserInstallDir = strings.TrimSpace(os.Getenv("PLAYWRIGHT_BROWSERS_PATH"))
@@ -128,6 +135,7 @@ func (r BrowserLaunchRequest) BrowserOptions() browser.BrowserSessionOptions {
 	return browser.BrowserSessionOptions{
 		URL:               r.URL,
 		Headless:          browser.HeadlessPtr(r.Headless),
+		LaunchTimeoutMS:   r.LaunchTimeoutMS,
 		DriverDir:         r.DriverDir,
 		ProfileDir:        r.ProfileDir,
 		BrowserInstallDir: r.BrowserInstallDir,
@@ -148,6 +156,7 @@ func (r BrowserLaunchRequest) FirefoxMiddleware() browser.FirefoxMiddleware {
 		WithBrowserPath(r.BrowserPath).
 		WithBrowserInstallDir(r.BrowserInstallDir).
 		WithDriverDir(r.DriverDir).
+		WithLaunchTimeoutMS(r.LaunchTimeoutMS).
 		WithProfileDir(r.ProfileDir).
 		WithUserDataDir(r.UserDataDir).
 		WithUserAgent(r.UserAgent).
@@ -170,6 +179,7 @@ func (r BrowserLaunchRequest) ChromiumMiddleware() browser.ChromiumMiddleware {
 		WithBrowserPath(r.BrowserPath).
 		WithBrowserInstallDir(r.BrowserInstallDir).
 		WithDriverDir(r.DriverDir).
+		WithLaunchTimeoutMS(r.LaunchTimeoutMS).
 		WithProfileDir(r.ProfileDir).
 		WithUserDataDir(r.UserDataDir).
 		WithUserAgent(r.UserAgent).

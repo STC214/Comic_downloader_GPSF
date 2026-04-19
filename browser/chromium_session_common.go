@@ -20,6 +20,8 @@ type ChromiumPageActions interface {
 	Content() (string, error)
 	Goto(url string) error
 	ClickText(text string) error
+	LoadLazyContent() error
+	LoadLazyContentForCount(expectedImageCount int) error
 }
 
 // Open delegates to the build-specific implementation helper.
@@ -63,6 +65,16 @@ func (s *ChromiumSession) Goto(url string) error {
 // ClickText clicks a visible text node in the live browser session.
 func (s *ChromiumSession) ClickText(text string) error {
 	return chromiumSessionClickText(s, text)
+}
+
+// LoadLazyContent scrolls through the page to trigger lazy-loaded content.
+func (s *ChromiumSession) LoadLazyContent() error {
+	return chromiumSessionLoadLazyContentForCount(s, 0)
+}
+
+// LoadLazyContentForCount scrolls through the page until the expected image count is loaded.
+func (s *ChromiumSession) LoadLazyContentForCount(expectedImageCount int) error {
+	return chromiumSessionLoadLazyContentForCount(s, expectedImageCount)
 }
 
 func normalizedChromiumURL(value string) string {

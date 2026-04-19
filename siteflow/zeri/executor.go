@@ -58,7 +58,7 @@ func ExecuteWithProgress(session browser.BrowserPageActions, summaryURL string, 
 		})
 	}
 
-	report(0, 0, 0.02, "启动", "摘要")
+	report(0, 0, 0.02, "start", "summary")
 	summaryHTML, err := session.Content()
 	if err != nil {
 		return ExecutionResult{}, fmt.Errorf("read summary html: %w", err)
@@ -70,40 +70,23 @@ func ExecuteWithProgress(session browser.BrowserPageActions, summaryURL string, 
 	if summary.ReaderURL == "" {
 		return ExecutionResult{}, fmt.Errorf("reader url not found in summary page")
 	}
+
 	downloadWeight := computeDownloadWeight(summary.PageCount)
 	parseWeight := 1.0 - downloadWeight
 	if parseWeight < 0.2 {
 		parseWeight = 0.2
 	}
-	report(0, 0, 0.10*parseWeight, "解析", "摘要")
+
+	report(0, 0, 0.10*parseWeight, "parse", "summary")
 	if err := session.Goto(summary.ReaderURL); err != nil {
 		return ExecutionResult{}, fmt.Errorf("goto reader url %q: %w", summary.ReaderURL, err)
 	}
 
-	readerHTML, err := session.Content()
-	if err != nil {
-		return ExecutionResult{}, fmt.Errorf("read reader html: %w", err)
-	}
-	reader, err := ParseReaderPage(summaryURL, summary.ReaderURL, readerHTML)
+	reader, activationClicks, err := hydrateReaderPage(session, summaryURL, summary.ReaderURL)
 	if err != nil {
 		return ExecutionResult{}, err
 	}
-	report(0, 0, 0.30*parseWeight, "解析", "正文")
-
-	activationClicks := 0
-	if reader.HasZoom100 {
-		if err := session.ClickText("100%"); err != nil {
-			return ExecutionResult{}, fmt.Errorf("click 100%%: %w", err)
-		}
-		activationClicks = 1
-		activatedHTML, err := session.Content()
-		if err == nil {
-			if activatedReader, parseErr := ParseReaderPage(summaryURL, summary.ReaderURL, activatedHTML); parseErr == nil {
-				reader = activatedReader
-			}
-		}
-	}
-	report(0, 0, 0.45*parseWeight, "激活", "100%")
+	report(0, 0, 0.30*parseWeight, "parse", "reader")
 
 	paginationPages, collectedImages, paginationClicks, err := walkReaderPagination(session, summaryURL, reader, func(current, total int) {
 		if progress == nil || total <= 0 {
@@ -118,13 +101,13 @@ func ExecuteWithProgress(session browser.BrowserPageActions, summaryURL string, 
 		if total > 0 {
 			fraction = spanStart + span*float64(current)/float64(total)
 		}
-		report(current, total, fraction, "解析", fmt.Sprintf("%d/%d", current, total))
+		report(current, total, fraction, "parse", fmt.Sprintf("%d/%d", current, total))
 	})
 	if err != nil {
 		return ExecutionResult{}, err
 	}
 	collectedImages = mergeUniqueStrings(append(reader.FilteredImageURLs, collectedImages...))
-	report(len(paginationPages), len(paginationPages), parseWeight, "解析", "完成")
+	report(len(paginationPages), len(paginationPages), parseWeight, "parse", "done")
 
 	return ExecutionResult{
 		Summary:                    summary,
@@ -139,11 +122,12 @@ func ExecuteWithProgress(session browser.BrowserPageActions, summaryURL string, 
 }
 
 func walkReaderPagination(session browser.BrowserPageActions, summaryURL string, first ReaderPage, progress func(current, total int)) ([]ReaderPage, []string, int, error) {
-	paginationURLs := mergeUniqueStrings(append([]string{first.URL}, first.PaginationURLs...))
+	paginationURLs := mergeUniqueStrings(first.PaginationURLs)
 	paginationPages := make([]ReaderPage, 0, len(paginationURLs))
 	collectedImages := make([]string, 0)
 	activationClicks := 0
 	total := len(paginationURLs)
+
 	for _, pageURL := range paginationURLs {
 		if strings.TrimSpace(pageURL) == "" {
 			continue
@@ -153,21 +137,56 @@ func walkReaderPagination(session browser.BrowserPageActions, summaryURL string,
 				return nil, nil, 0, fmt.Errorf("goto pagination url %q: %w", pageURL, err)
 			}
 		}
-		html, err := session.Content()
-		if err != nil {
-			return nil, nil, 0, fmt.Errorf("read pagination html %q: %w", pageURL, err)
-		}
-		page, err := ParseReaderPage(summaryURL, pageURL, html)
+		page, clicked, err := hydrateReaderPage(session, summaryURL, pageURL)
 		if err != nil {
 			return nil, nil, 0, err
 		}
+		activationClicks += clicked
 		paginationPages = append(paginationPages, page)
 		collectedImages = append(collectedImages, page.FilteredImageURLs...)
 		if progress != nil {
 			progress(len(paginationPages), total)
 		}
 	}
+
 	return paginationPages, mergeUniqueStrings(collectedImages), activationClicks, nil
+}
+
+func hydrateReaderPage(session browser.BrowserPageActions, summaryURL, pageURL string) (ReaderPage, int, error) {
+	initialHTML, err := session.Content()
+	if err != nil {
+		return ReaderPage{}, 0, fmt.Errorf("read reader html %q: %w", pageURL, err)
+	}
+	page, err := ParseReaderPage(summaryURL, pageURL, initialHTML)
+	if err != nil {
+		return ReaderPage{}, 0, err
+	}
+
+	activationClicks := 0
+	if page.HasZoom100 || strings.Contains(initialHTML, "100%") {
+		if err := session.ClickText("100%"); err != nil {
+			return ReaderPage{}, 0, fmt.Errorf("click 100%% at %q: %w", pageURL, err)
+		}
+		activationClicks = 1
+	}
+
+	expectedImages := len(page.FilteredImageURLs)
+	if expectedImages <= 0 {
+		expectedImages = len(page.ImageURLs)
+	}
+	if err := session.LoadLazyContentForCount(expectedImages); err != nil {
+		return ReaderPage{}, 0, fmt.Errorf("load lazy content %q: %w", pageURL, err)
+	}
+
+	finalHTML, err := session.Content()
+	if err != nil {
+		return ReaderPage{}, 0, fmt.Errorf("read activated reader html %q: %w", pageURL, err)
+	}
+	activatedPage, err := ParseReaderPage(summaryURL, pageURL, finalHTML)
+	if err != nil {
+		return ReaderPage{}, 0, err
+	}
+	return activatedPage, activationClicks, nil
 }
 
 func computeDownloadWeight(targetCount int) float64 {

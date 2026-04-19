@@ -48,3 +48,11 @@ func chromiumSessionGoto(s *ChromiumSession, url string) error {
 func chromiumSessionClickText(s *ChromiumSession, text string) error {
 	return errors.New("playwright runtime is disabled in this build; use -tags playwright")
 }
+
+func chromiumSessionLoadLazyContent(s *ChromiumSession) error {
+	return chromiumSessionLoadLazyContentForCount(s, 0)
+}
+
+func chromiumSessionLoadLazyContentForCount(s *ChromiumSession, expectedImageCount int) error {
+	return errors.New("playwright runtime is disabled in this build; use -tags playwright")
+}

@@ -4,6 +4,7 @@ package browser
 type BrowserSessionOptions struct {
 	URL               string         `json:"url,omitempty"`
 	Headless          *bool          `json:"headless,omitempty"`
+	LaunchTimeoutMS   int            `json:"launchTimeoutMs,omitempty"`
 	DriverDir         string         `json:"driverDir,omitempty"`
 	ProfileDir        string         `json:"profileDir,omitempty"`
 	BrowserInstallDir string         `json:"browserInstallDir,omitempty"`

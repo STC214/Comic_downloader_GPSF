@@ -31,6 +31,8 @@ type BrowserPageActions interface {
 	Content() (string, error)
 	Goto(url string) error
 	ClickText(text string) error
+	LoadLazyContent() error
+	LoadLazyContentForCount(expectedImageCount int) error
 }
 
 // LaunchData returns the launch inputs needed by the Playwright-backed implementation.
@@ -88,6 +90,16 @@ func (s *FirefoxSession) Goto(url string) error {
 // ClickText clicks a visible text node in the live browser session.
 func (s *FirefoxSession) ClickText(text string) error {
 	return sessionClickText(s, text)
+}
+
+// LoadLazyContent scrolls through the page to trigger lazy-loaded content.
+func (s *FirefoxSession) LoadLazyContent() error {
+	return sessionLoadLazyContentForCount(s, 0)
+}
+
+// LoadLazyContentForCount scrolls through the page until the expected image count is loaded.
+func (s *FirefoxSession) LoadLazyContentForCount(expectedImageCount int) error {
+	return sessionLoadLazyContentForCount(s, expectedImageCount)
 }
 
 func normalizedURL(value string) string {

@@ -26,6 +26,7 @@ type LaunchSpec struct {
 	RuntimeRoot      string         `json:"runtimeRoot"`
 	URL              string         `json:"url"`
 	DriverDir        string         `json:"driverDir"`
+	LaunchTimeoutMS  int            `json:"launchTimeoutMs"`
 	ProfileDir       string         `json:"profileDir"`
 	UserDataDir      string         `json:"userDataDir"`
 	UserAgent        string         `json:"userAgent"`
@@ -45,6 +46,7 @@ type Payload struct {
 	OutputDir        string         `json:"outputDir"`
 	RuntimeRoot      string         `json:"runtimeRoot"`
 	DriverDir        string         `json:"driverDir"`
+	LaunchTimeoutMS  int            `json:"launchTimeoutMs"`
 	ProfileDir       string         `json:"profileDir"`
 	UserAgent        string         `json:"userAgent"`
 	Locale           string         `json:"locale"`

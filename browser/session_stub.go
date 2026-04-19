@@ -48,3 +48,11 @@ func sessionGoto(s *FirefoxSession, url string) error {
 func sessionClickText(s *FirefoxSession, text string) error {
 	return errors.New("playwright runtime is disabled in this build; use -tags playwright")
 }
+
+func sessionLoadLazyContent(s *FirefoxSession) error {
+	return sessionLoadLazyContentForCount(s, 0)
+}
+
+func sessionLoadLazyContentForCount(s *FirefoxSession, expectedImageCount int) error {
+	return errors.New("playwright runtime is disabled in this build; use -tags playwright")
+}

@@ -21,6 +21,12 @@ type BrowserPlaywrightProfile struct {
 	RootDir          string      `json:"rootDir"`
 }
 
+// BrowserFreshProfile describes one fresh empty temporary browser profile dir.
+type BrowserFreshProfile struct {
+	BrowserType BrowserType `json:"browserType"`
+	RootDir     string      `json:"rootDir"`
+}
+
 // NewBrowserProfileManager builds a profile manager rooted at workspaceRoot.
 func NewBrowserProfileManager(workspaceRoot string) BrowserProfileManager {
 	return BrowserProfileManager{
@@ -138,6 +144,31 @@ func (m BrowserProfileManager) PreparePlaywrightProfileFromSource(browserType Br
 		SourceProfileDir: sourceDir,
 		RootDir:          tempRoot,
 	}, nil
+}
+
+// PrepareFreshPlaywrightProfile creates a brand-new empty temporary profile dir for a browser.
+func (m BrowserProfileManager) PrepareFreshPlaywrightProfile(browserType BrowserType) (BrowserFreshProfile, error) {
+	tasksRoot, err := filepath.Abs(m.Paths.BrowserTasksRoot)
+	if err != nil {
+		return BrowserFreshProfile{}, fmt.Errorf("resolve browser tasks root %q: %w", m.Paths.BrowserTasksRoot, err)
+	}
+	tasksRoot = filepath.Clean(tasksRoot)
+	if err := os.MkdirAll(tasksRoot, 0o755); err != nil {
+		return BrowserFreshProfile{}, fmt.Errorf("create browser tasks root %q: %w", tasksRoot, err)
+	}
+	tempRoot, err := os.MkdirTemp(tasksRoot, string(browserType)+"-fresh-*")
+	if err != nil {
+		return BrowserFreshProfile{}, fmt.Errorf("create fresh profile root: %w", err)
+	}
+	return BrowserFreshProfile{
+		BrowserType: browserType,
+		RootDir:     filepath.Clean(tempRoot),
+	}, nil
+}
+
+// CleanupFreshPlaywrightProfile removes one fresh temporary profile dir.
+func (m BrowserProfileManager) CleanupFreshPlaywrightProfile(profile BrowserFreshProfile) error {
+	return os.RemoveAll(profile.RootDir)
 }
 
 // PrepareTaskProfileFromSource copies a selected source profile into a fresh task-scoped temp directory.

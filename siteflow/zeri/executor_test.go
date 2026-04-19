@@ -31,6 +31,9 @@ func (f *fakeSession) ClickText(text string) error {
 	return nil
 }
 
+func (f *fakeSession) LoadLazyContent() error                               { return nil }
+func (f *fakeSession) LoadLazyContentForCount(expectedImageCount int) error { return nil }
+
 func TestExecuteRunsSummaryToReaderFlow(t *testing.T) {
 	summaryHTML := `
 	<html><head><title>summary</title></head><body>
@@ -68,14 +71,22 @@ func TestExecuteRunsSummaryToReaderFlow(t *testing.T) {
 	if result.ActivationClicks != 1 {
 		t.Fatalf("ActivationClicks = %d, want 1", result.ActivationClicks)
 	}
-	if len(result.PaginationPages) != 3 {
-		t.Fatalf("len(PaginationPages) = %d, want 3", len(result.PaginationPages))
+	if result.PaginationActivationClicks != 2 {
+		t.Fatalf("PaginationActivationClicks = %d, want 2", result.PaginationActivationClicks)
+	}
+	if len(result.PaginationPages) != 2 {
+		t.Fatalf("len(PaginationPages) = %d, want 2", len(result.PaginationPages))
 	}
 	if len(result.CollectedImages) != 2 {
 		t.Fatalf("len(CollectedImages) = %d, want 2", len(result.CollectedImages))
 	}
-	if len(session.clicks) != 1 || session.clicks[0] != "100%" {
-		t.Fatalf("clicks = %#v, want [100%%]", session.clicks)
+	if len(session.clicks) != 3 {
+		t.Fatalf("clicks = %#v, want 3 clicks", session.clicks)
+	}
+	for _, click := range session.clicks {
+		if click != "100%" {
+			t.Fatalf("clicks = %#v, want only 100%% clicks", session.clicks)
+		}
 	}
 	if result.Reader.Title == "" {
 		t.Fatal("reader title is empty")

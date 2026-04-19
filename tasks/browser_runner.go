@@ -42,7 +42,17 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 	sourceProfileDir := ""
 	activeProfileDir := ""
 
-	if req.UsesTaskProfile() {
+	if req.BrowserType == string(projectruntime.BrowserTypeFirefox) {
+		profile, err := manager.PrepareFreshPlaywrightProfile(projectruntime.BrowserType(req.BrowserType))
+		if err != nil {
+			return BrowserRunResult{}, err
+		}
+		req.UserDataDir = absolutePathOrClean(profile.RootDir)
+		activeProfileDir = req.UserDataDir
+		cleanupProfile = func() {
+			_ = manager.CleanupFreshPlaywrightProfile(profile)
+		}
+	} else if req.UsesTaskProfile() {
 		profile, err := req.PrepareTaskProfile()
 		if err != nil {
 			return BrowserRunResult{}, err
@@ -179,6 +189,8 @@ type taskBrowserSession interface {
 	Content() (string, error)
 	Goto(string) error
 	ClickText(string) error
+	LoadLazyContent() error
+	LoadLazyContentForCount(expectedImageCount int) error
 }
 
 func absolutePathOrClean(path string) string {

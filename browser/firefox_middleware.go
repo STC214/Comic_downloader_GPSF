@@ -16,6 +16,7 @@ type FirefoxMiddleware struct {
 	downloadRoot      string
 	outputDir         string
 	driverDir         string
+	launchTimeoutMS   int
 	browserInstallDir string
 	profileDir        string
 	userDataDir       string
@@ -38,6 +39,7 @@ func NewFirefoxMiddleware(url string) FirefoxMiddleware {
 		downloadRoot:      "",
 		outputDir:         "",
 		driverDir:         "",
+		launchTimeoutMS:   120000,
 		browserInstallDir: "",
 		profileDir:        projectruntime.DefaultFirefoxProfileDir(),
 		userDataDir:       "",
@@ -88,6 +90,14 @@ func (m FirefoxMiddleware) WithOutputDir(outputDir string) FirefoxMiddleware {
 // WithDriverDir sets the Playwright driver directory.
 func (m FirefoxMiddleware) WithDriverDir(driverDir string) FirefoxMiddleware {
 	m.driverDir = normalizePath(driverDir)
+	return m
+}
+
+// WithLaunchTimeoutMS sets the maximum time to wait for Playwright to start the browser.
+func (m FirefoxMiddleware) WithLaunchTimeoutMS(launchTimeoutMS int) FirefoxMiddleware {
+	if launchTimeoutMS >= 0 {
+		m.launchTimeoutMS = launchTimeoutMS
+	}
 	return m
 }
 
@@ -244,6 +254,16 @@ func (m FirefoxMiddleware) resolveDriverDirOrDefault(opts BrowserSessionOptions)
 	return projectruntime.DefaultPlaywrightDriverDir(m.RuntimeRoot())
 }
 
+func (m FirefoxMiddleware) resolveLaunchTimeoutMS(opts BrowserSessionOptions) int {
+	if opts.LaunchTimeoutMS >= 0 {
+		return opts.LaunchTimeoutMS
+	}
+	if m.launchTimeoutMS >= 0 {
+		return m.launchTimeoutMS
+	}
+	return 120000
+}
+
 func (m FirefoxMiddleware) resolveLocale(opts BrowserSessionOptions) string {
 	if trimmed := strings.TrimSpace(opts.Locale); trimmed != "" {
 		return trimmed
@@ -303,6 +323,7 @@ func (m FirefoxMiddleware) LaunchSpec(opts BrowserSessionOptions) LaunchSpec {
 		Headless:         m.resolveHeadless(opts),
 		Adblock:          m.adblock,
 		DriverDir:        m.resolveDriverDirOrDefault(opts),
+		LaunchTimeoutMS:  m.resolveLaunchTimeoutMS(opts),
 	}
 }
 

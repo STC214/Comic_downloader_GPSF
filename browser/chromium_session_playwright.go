@@ -55,6 +55,7 @@ func (m ChromiumMiddleware) toPlaywrightPersistentContextOptions(opts BrowserSes
 	contextOptions := playwright.BrowserTypeLaunchPersistentContextOptions{
 		ExecutablePath: playwright.String(m.BrowserPath()),
 		Headless:       playwright.Bool(m.resolveHeadless(opts)),
+		Timeout:        playwright.Float(float64(m.resolveLaunchTimeoutMS(opts))),
 		IgnoreDefaultArgs: []string{
 			"--disable-extensions",
 			"--disable-component-extensions-with-background-pages",
@@ -291,6 +292,92 @@ func chromiumSessionClickText(s *ChromiumSession, text string) error {
 	if !ok || page == nil {
 		return errors.New("browser session page is not a playwright.Page")
 	}
+	if strings.TrimSpace(text) == "100%" {
+		button := page.Locator("#image_width1 button")
+		if count, err := button.Count(); err == nil && count > 0 {
+			box, err := button.First().BoundingBox()
+			if err == nil && box != nil {
+				return page.Mouse().Click(box.X+box.Width/2, box.Y+box.Height/2)
+			}
+			return button.First().Click()
+		}
+	}
 	locator := page.GetByText(text, playwright.PageGetByTextOptions{Exact: playwright.Bool(true)})
 	return locator.Click()
+}
+
+func chromiumSessionLoadLazyContent(s *ChromiumSession) error {
+	return chromiumSessionLoadLazyContentForCount(s, 0)
+}
+
+func chromiumSessionLoadLazyContentForCount(s *ChromiumSession, expectedImageCount int) error {
+	if s == nil {
+		return errors.New("browser session is nil")
+	}
+	page, ok := s.Page.(playwright.Page)
+	if !ok || page == nil {
+		return errors.New("browser session page is not a playwright.Page")
+	}
+	result, err := page.Evaluate(fmt.Sprintf(`async () => {
+		const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+		const expected = Math.max(0, Number(%d || 0));
+		const imageStats = () => {
+			const images = Array.from(document.images || []);
+			const total = images.length;
+			const loaded = images.filter(img => img.complete && img.naturalWidth > 0).length;
+			const target = expected > 0 ? Math.min(expected, total) : total;
+			return { total, loaded, target, allLoaded: total > 0 && loaded === total };
+		};
+		const scrollTop = () => window.scrollTo(0, 0);
+		const scrollBottom = () => window.scrollTo(0, Math.max(0, document.documentElement.scrollHeight - window.innerHeight));
+		const scrollBounce = async () => {
+			const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+			const points = [
+				0,
+				maxScroll * 0.25,
+				maxScroll * 0.5,
+				maxScroll * 0.75,
+				maxScroll,
+				maxScroll * 0.75,
+				maxScroll * 0.5,
+				maxScroll * 0.25,
+			];
+			for (const point of points) {
+				window.scrollTo(0, Math.max(0, Math.floor(point)));
+				window.dispatchEvent(new Event('scroll'));
+				await sleep(180);
+			}
+		};
+		for (let i = 0; i < 60; i++) {
+			const stats = imageStats();
+			if (stats.allLoaded) {
+				scrollTop();
+				await sleep(150);
+				return stats;
+			}
+			await scrollBounce();
+			scrollBottom();
+			window.dispatchEvent(new Event('scroll'));
+			await sleep(180);
+		}
+		const stats = imageStats();
+		scrollTop();
+		await sleep(150);
+		return stats;
+	}`, expectedImageCount))
+	if err != nil {
+		return err
+	}
+	if stats, ok := result.(map[string]any); ok {
+		total := int(asFloat64(stats["total"]))
+		loaded := int(asFloat64(stats["loaded"]))
+		target := int(asFloat64(stats["target"]))
+		if target <= 0 {
+			target = total
+		}
+		if target > 0 && loaded < target {
+			return fmt.Errorf("lazy images timed out: %d/%d loaded", loaded, target)
+		}
+	}
+	return nil
 }

@@ -70,3 +70,24 @@ func TestBrowserLaunchRequestDefaultsChromium(t *testing.T) {
 		t.Fatalf("BrowserPath = %q, want empty and resolved later", req.BrowserPath)
 	}
 }
+
+func TestBrowserLaunchRequestForcesFirefoxForZeriURL(t *testing.T) {
+	workspace := t.TempDir()
+	req := BrowserLaunchRequest{
+		URL:        "https://zeri-m.top/index.php?route=comic/article&c_id=1&comic_id=2",
+		BrowserType: "chromium",
+		RuntimeRoot: filepath.Join(workspace, "runtime"),
+	}
+	req = req.Normalize()
+	if req.BrowserType != "firefox" {
+		t.Fatalf("BrowserType = %q, want firefox for zeri URL", req.BrowserType)
+	}
+	wantProfile := filepath.Clean(`runtime/browser-profiles/baseline-userdata`)
+	if req.ProfileDir != wantProfile {
+		t.Fatalf("ProfileDir = %q, want %q", req.ProfileDir, wantProfile)
+	}
+	wantBrowserPath := `C:\Program Files\Mozilla Firefox\firefox.exe`
+	if req.BrowserPath != wantBrowserPath {
+		t.Fatalf("BrowserPath = %q, want %q", req.BrowserPath, wantBrowserPath)
+	}
+}
