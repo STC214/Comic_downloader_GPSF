@@ -1,51 +1,43 @@
 # Comic Downloader
 
-Windows comic downloader in Go.
+这是仓库当前状态的备份说明，内容与主 README 保持一致。
 
-This repository now uses the Go refactor stack as the active application entry.
-The browser/task/runtime layers live under `browser/`, `tasks/`, `sites/`, `runtime/`, `siteflow/`, `ui/`, and `internal/app/`.
+## 当前状态
 
-The active stack is Go + Playwright-first browser sessions + browser middleware stealth injection.
+- 主线为 Firefox + Zeri。
+- Chromium 仅作为内部探针和兼容性实现保留。
+- `myreadingmanga.info` 在前端添加任务时会被直接拦截并提示“暂不支持此站点”。
+- 便携版是单文件 `portable.exe`，持久数据保存在 `portable-data/`。
+- 任务卡片显示漫画标题、缩略图、进度条和实时状态。
+- 缩略图支持 `webp`、`avif` 等常见的非 JPEG 格式输入。
 
-## Current contract
-
-- The frontend submits `url` and `downloadRoot`.
-- The filter layer resolves the route and decides `headless`, `verify`, `browser type`, and `HTTPOnly`.
-- `zeri` uses the Firefox browser path and a browser-backed HTTP download flow.
-- `myreadingmanga` stays verification-aware on Chromium.
-- `nyahentai` and `hentai2` stay browser-driven on Chromium.
-- Task state, reports, and logs are written to `runtime/`.
-- The UI can read `runtime/tasks/task-<id>/report.json` and `runtime/logs/task-<id>.log`.
-
-## Entry points
-
-- Active app: `go run .`
-- Alternate CLI entry: `go run ./cmd/comic-downloader`
-
-## Quick start
+## 运行方式
 
 ```powershell
 go test ./...
-go run ./cmd/comic-downloader --workspace-root .
+go run ./cmd/comic-downloader
 ```
 
-## Runtime layout
+便携版：
 
-- `runtime/browser-profiles/` stores task-scoped browser profile copies.
-- `runtime/browser-profiles/<worker>/task-<id>/original-userdata` stores the task-scoped mother profile copy.
-- `runtime/output/` stores task output.
-- `runtime/thumbnails/` stores task thumbnails.
-- `runtime/tasks/task-<id>/state.json` stores task state.
-- `runtime/tasks/task-<id>/report.json` stores the normalized task report.
-- `runtime/logs/task-<id>.log` stores the human-readable task log.
+```powershell
+dist\portable.exe
+```
 
-## Notes
+## 当前运行目录
 
-- The browser layer uses a Playwright-first session adapter with a filesystem fallback so the task/session boundary stays concrete even when a browser runtime is unavailable.
-- Chromium tasks default to `runtime/chromium/chrome.exe` plus `runtime/chrome_stealth.js`, and the userdata resolver prefers the current Windows default browser association before falling back to Chromium-family profile paths.
-- Firefox tasks auto-resolve the local Firefox install plus `runtime/firefox_stealth.js`, and the profile resolver prefers `profiles.ini` default entries when available.
-- The browser middleware automatically injects the correct stealth script before any page is opened.
-- The browser middleware also owns adblock rule loading and page blocking.
-- The UI can read the new report/log files and merge them into the task list and detail views.
-- Browser profile isolation and the Chromium/Firefox mother-profile flow are documented in [`docs/browser_profile_flow.md`](docs/browser_profile_flow.md).
-- The current `zeri` summary/reader rules are documented in [`docs/zeri_flow_rules.md`](docs/zeri_flow_rules.md).
+- 普通工作区：`runtime/`
+- 单文件便携版：`portable-data/`
+
+便携版会把状态、日志、历史、任务、缩略图和下载结果都落到 `portable-data/` 下，并在退出时清理临时解包目录。
+
+## 浏览器自检页
+
+- `chrome://version`
+- `about:support`
+- `about:profiles`
+
+## 说明
+
+- 当前公共 UI 以 Firefox 路线为主。
+- Chromium 仍在代码中保留，用于内部探针与兼容性测试。

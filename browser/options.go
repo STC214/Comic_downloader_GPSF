@@ -5,6 +5,8 @@ type BrowserSessionOptions struct {
 	URL               string         `json:"url,omitempty"`
 	Headless          *bool          `json:"headless,omitempty"`
 	LaunchTimeoutMS   int            `json:"launchTimeoutMs,omitempty"`
+	LockScope         string         `json:"lockScope,omitempty"`
+	AdblockRulesPath  string         `json:"adblockRulesPath,omitempty"`
 	DriverDir         string         `json:"driverDir,omitempty"`
 	ProfileDir        string         `json:"profileDir,omitempty"`
 	BrowserInstallDir string         `json:"browserInstallDir,omitempty"`

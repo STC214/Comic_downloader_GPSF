@@ -21,12 +21,4 @@ func TestDefaultBrowserMenuStateIncludesFirefoxPaths(t *testing.T) {
 	if menu.ChromiumInstallRoot != wantChromiumInstall {
 		t.Fatalf("ChromiumInstallRoot = %q, want %q", menu.ChromiumInstallRoot, wantChromiumInstall)
 	}
-	wantMother := `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\aocfvl86.default-default-3`
-	if menu.FirefoxMotherProfileDir != wantMother {
-		t.Fatalf("FirefoxMotherProfileDir = %q, want %q", menu.FirefoxMotherProfileDir, wantMother)
-	}
-	wantWorking := filepath.Clean(`runtime/browser-profiles/baseline-userdata`)
-	if menu.FirefoxWorkingProfileDir != wantWorking {
-		t.Fatalf("FirefoxWorkingProfileDir = %q, want %q", menu.FirefoxWorkingProfileDir, wantWorking)
-	}
 }

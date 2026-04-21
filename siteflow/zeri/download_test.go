@@ -41,8 +41,33 @@ func TestDownloadImagesWritesFiles(t *testing.T) {
 			t.Fatalf("stat %q: %v", path, err)
 		}
 	}
-	wantDir := filepath.Join(dir, "zeri", "Zeri-测试标题")
+	wantDir := filepath.Join(dir, "Zeri_测试标题")
 	if result.OutputDir != wantDir {
 		t.Fatalf("OutputDir = %q, want %q", result.OutputDir, wantDir)
+	}
+}
+
+func TestSelectThumbnailSourcePrefersFirstPageNumber(t *testing.T) {
+	got := SelectThumbnailSource([]string{
+		`F:\out\11.avif`,
+		`F:\out\111.jpg`,
+		`F:\out\1.avif`,
+		`F:\out\1111.png`,
+	})
+	want := `F:\out\1.avif`
+	if got != want {
+		t.Fatalf("SelectThumbnailSource() = %q, want %q", got, want)
+	}
+}
+
+func TestSelectThumbnailSourceAcceptsZeroPaddedFirstPage(t *testing.T) {
+	got := SelectThumbnailSource([]string{
+		`F:\out\11.avif`,
+		`F:\out\01.jpg`,
+		`F:\out\111.png`,
+	})
+	want := `F:\out\01.jpg`
+	if got != want {
+		t.Fatalf("SelectThumbnailSource() = %q, want %q", got, want)
 	}
 }

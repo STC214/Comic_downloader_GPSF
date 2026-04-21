@@ -2,9 +2,12 @@ package tasks
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	projectruntime "comic_downloader_go_playwright_stealth/runtime"
 	"comic_downloader_go_playwright_stealth/siteflow/zeri"
@@ -37,6 +40,7 @@ type BrowserRunResult struct {
 	DownloadedCount      int    `json:"downloadedCount,omitempty"`
 	DownloadedBytes      int64  `json:"downloadedBytes,omitempty"`
 	DownloadedDir        string `json:"downloadedDir,omitempty"`
+	ThumbnailPath        string `json:"thumbnailPath,omitempty"`
 }
 
 // RunBrowserRequest opens the page described by the request and returns a normalized result.
@@ -45,49 +49,29 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 	if strings.TrimSpace(req.URL) == "" {
 		return BrowserRunResult{}, fmt.Errorf("browser url is empty")
 	}
+	log.Printf("browser request start: type=%s headless=%t keepOpen=%t url=%s output=%s profile=%s driver=%s",
+		req.BrowserType, req.Headless, req.KeepOpen, req.URL, req.OutputDir, req.ProfileDir, req.DriverDir)
 
 	manager := projectruntime.NewBrowserProfileManager(workspaceRootFromRuntimeRoot(req.RuntimeRoot))
+	runtimePaths := projectruntime.NewPathsFromRuntimeRoot(req.RuntimeRoot)
 	var cleanupProfile func()
-	sourceProfileDir := ""
 	activeProfileDir := ""
 
-	if req.BrowserType == string(projectruntime.BrowserTypeFirefox) {
-		profile, err := manager.PrepareFreshPlaywrightProfile(projectruntime.BrowserType(req.BrowserType))
-		if err != nil {
-			return BrowserRunResult{}, err
-		}
-		req.UserDataDir = absolutePathOrClean(profile.RootDir)
-		activeProfileDir = req.UserDataDir
-		cleanupProfile = func() {
-			_ = manager.CleanupFreshPlaywrightProfile(profile)
-		}
-	} else if req.UsesTaskProfile() {
-		profile, err := req.PrepareTaskProfile()
-		if err != nil {
-			return BrowserRunResult{}, err
-		}
-		sourceProfileDir = profile.MotherProfileDir
-		req.UserDataDir = absolutePathOrClean(profile.ContentUserData)
-		activeProfileDir = req.UserDataDir
-		cleanupProfile = func() {
-			_ = req.CleanupTaskProfile()
-		}
-	} else {
-		profile, err := manager.PreparePlaywrightProfileFromSource(projectruntime.BrowserType(req.BrowserType), req.ProfileDir)
-		if err != nil {
-			return BrowserRunResult{}, err
-		}
-		sourceProfileDir = profile.SourceProfileDir
-		req.UserDataDir = absolutePathOrClean(profile.RootDir)
-		activeProfileDir = req.UserDataDir
-		cleanupProfile = func() {
-			_ = manager.CleanupPlaywrightProfile(profile)
-		}
+	profile, err := manager.PrepareFreshPlaywrightProfile(projectruntime.BrowserType(req.BrowserType))
+	if err != nil {
+		return BrowserRunResult{}, err
+	}
+	req.UserDataDir = absolutePathOrClean(profile.RootDir)
+	req.ProfileDir = req.UserDataDir
+	activeProfileDir = req.UserDataDir
+	log.Printf("browser task profile ready: %s", activeProfileDir)
+	cleanupProfile = func() {
+		_ = manager.CleanupFreshPlaywrightProfile(profile)
 	}
 
-	if sourceProfileDir != "" || activeProfileDir != "" {
-		fmt.Printf("profile flow: source=%s temp=%s output=%s\n", sourceProfileDir, activeProfileDir, req.OutputDir)
-		logBrowserProfileAudit(req.BrowserType, sourceProfileDir, activeProfileDir)
+	if activeProfileDir != "" {
+		log.Printf("profile flow: source=%s temp=%s output=%s", "(fresh)", activeProfileDir, req.OutputDir)
+		logBrowserProfileAudit(req.BrowserType, "", activeProfileDir)
 	}
 
 	if req.Progress != nil {
@@ -113,6 +97,7 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 
 	var zeriResult zeri.ExecutionResult
 	var downloadResult zeri.DownloadResult
+	var thumbnailPath string
 	site := ""
 	if zeri.IsZeriURL(req.URL) {
 		site = "zeri"
@@ -140,15 +125,38 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 			if err != nil {
 				return BrowserRunResult{}, err
 			}
+			if len(downloadResult.Files) > 0 {
+				taskID := strings.TrimSpace(req.TaskID)
+				if taskID == "" {
+					taskID = strings.TrimSpace(filepath.Base(downloadResult.OutputDir))
+				}
+				if taskID == "" || taskID == "." {
+					taskID = "task"
+				}
+				if taskID != "" {
+					thumbPath := runtimePaths.TaskThumbnailPath(taskID)
+					thumbnailSource := zeri.SelectThumbnailSource(downloadResult.Files)
+					if thumbnailSource == "" {
+						thumbnailSource = downloadResult.Files[0]
+					}
+					log.Printf("task thumbnail source: task=%s source=%s", taskID, thumbnailSource)
+					if err := zeri.CreateJPGThumbnail(thumbnailSource, thumbPath, 256); err != nil {
+						log.Printf("create task thumbnail failed: %v", err)
+					} else {
+						thumbnailPath = thumbPath
+					}
+				}
+			}
 		}
 	}
 
 	title, err := session.Title()
 	if err != nil {
-		return BrowserRunResult{}, err
+		log.Printf("session title lookup failed: %v", err)
+		title = req.URL
 	}
 	if req.KeepOpen {
-		if err := session.WaitClosed(); err != nil {
+		if err := waitForBrowserCloseOrSignal(session); err != nil {
 			return BrowserRunResult{}, err
 		}
 	}
@@ -179,6 +187,7 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 		DownloadedCount:      len(downloadResult.Files),
 		DownloadedBytes:      downloadResult.Bytes,
 		DownloadedDir:        downloadResult.OutputDir,
+		ThumbnailPath:        thumbnailPath,
 	}, nil
 }
 
@@ -239,14 +248,37 @@ func progressSpan(cb func(zeri.DownloadProgress), start, span float64) func(zeri
 	}
 }
 
+func waitForBrowserCloseOrSignal(session taskBrowserSession) error {
+	waitErr := make(chan error, 1)
+	go func() {
+		waitErr <- session.WaitClosed()
+	}()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
+	select {
+	case err := <-waitErr:
+		return err
+	case sig := <-sigCh:
+		log.Printf("browser session interrupted by %s; closing browser and cleaning task temp files", sig)
+		_ = session.Close()
+		if err := <-waitErr; err != nil {
+			return err
+		}
+		return fmt.Errorf("browser session interrupted by %s", sig)
+	}
+}
+
 func logBrowserProfileAudit(browserType, sourceRoot, tempRoot string) {
 	sourceRoot = filepath.Clean(strings.TrimSpace(sourceRoot))
 	tempRoot = filepath.Clean(strings.TrimSpace(tempRoot))
 	if sourceRoot == "" || tempRoot == "" {
 		return
 	}
-	fmt.Printf("%s profile source: %s\n", browserType, sourceRoot)
-	fmt.Printf("%s profile temp:   %s\n", browserType, tempRoot)
+	log.Printf("%s profile source: %s", browserType, sourceRoot)
+	log.Printf("%s profile temp:   %s", browserType, tempRoot)
 	paths := []string{
 		"prefs.js",
 		"extensions.json",
@@ -277,13 +309,13 @@ func logProfilePathAudit(label, path string) {
 	case err == nil && info.IsDir():
 		entries, readErr := os.ReadDir(path)
 		if readErr != nil {
-			fmt.Printf("%s dir: %s (read error: %v)\n", label, path, readErr)
+			log.Printf("%s dir: %s (read error: %v)", label, path, readErr)
 			return
 		}
-		fmt.Printf("%s dir: %s (entries=%d)\n", label, path, len(entries))
+		log.Printf("%s dir: %s (entries=%d)", label, path, len(entries))
 	case err == nil:
-		fmt.Printf("%s file: %s (size=%d)\n", label, path, info.Size())
+		log.Printf("%s file: %s (size=%d)", label, path, info.Size())
 	default:
-		fmt.Printf("%s missing: %s (%v)\n", label, path, err)
+		log.Printf("%s missing: %s (%v)", label, path, err)
 	}
 }

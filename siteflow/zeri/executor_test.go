@@ -68,11 +68,11 @@ func TestExecuteRunsSummaryToReaderFlow(t *testing.T) {
 	if result.Summary.ReaderURL == "" {
 		t.Fatal("result.Summary.ReaderURL is empty")
 	}
-	if result.ActivationClicks != 1 {
-		t.Fatalf("ActivationClicks = %d, want 1", result.ActivationClicks)
+	if result.ActivationClicks != 0 {
+		t.Fatalf("ActivationClicks = %d, want 0", result.ActivationClicks)
 	}
-	if result.PaginationActivationClicks != 2 {
-		t.Fatalf("PaginationActivationClicks = %d, want 2", result.PaginationActivationClicks)
+	if result.PaginationActivationClicks != 0 {
+		t.Fatalf("PaginationActivationClicks = %d, want 0", result.PaginationActivationClicks)
 	}
 	if len(result.PaginationPages) != 2 {
 		t.Fatalf("len(PaginationPages) = %d, want 2", len(result.PaginationPages))
@@ -80,13 +80,8 @@ func TestExecuteRunsSummaryToReaderFlow(t *testing.T) {
 	if len(result.CollectedImages) != 2 {
 		t.Fatalf("len(CollectedImages) = %d, want 2", len(result.CollectedImages))
 	}
-	if len(session.clicks) != 3 {
-		t.Fatalf("clicks = %#v, want 3 clicks", session.clicks)
-	}
-	for _, click := range session.clicks {
-		if click != "100%" {
-			t.Fatalf("clicks = %#v, want only 100%% clicks", session.clicks)
-		}
+	if len(session.clicks) != 0 {
+		t.Fatalf("clicks = %#v, want no clicks", session.clicks)
 	}
 	if result.Reader.Title == "" {
 		t.Fatal("reader title is empty")

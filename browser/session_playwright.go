@@ -95,7 +95,7 @@ func openFirefoxSession(m FirefoxMiddleware, opts BrowserSessionOptions) (*Firef
 		}()
 	}
 
-	releaseLock, err := projectruntime.AcquireBrowserSessionLock(m.RuntimeRoot())
+	releaseLock, err := projectruntime.AcquireBrowserSessionLockScoped(m.RuntimeRoot(), opts.LockScope)
 	if err != nil {
 		return nil, err
 	}
@@ -121,6 +121,12 @@ func openFirefoxSession(m FirefoxMiddleware, opts BrowserSessionOptions) (*Firef
 		_ = pw.Stop()
 		_ = releaseLock()
 		return nil, fmt.Errorf("add stealth init script: %w", err)
+	}
+	if err := applyAdblockRules(context, opts.AdblockRulesPath); err != nil {
+		_ = context.Close()
+		_ = pw.Stop()
+		_ = releaseLock()
+		return nil, fmt.Errorf("apply adblock rules: %w", err)
 	}
 
 	var page playwright.Page

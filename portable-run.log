@@ -1,0 +1,14 @@
+2026/04/19 23:30:03 extract entry: adblock\AWAvenue-Ads-Rule.txt dir=false target=F:\Temp\comic-downloader-portable-627579021\adblock\AWAvenue-Ads-Rule.txt
+2026/04/19 23:30:03 extract entry: runtime\browser-profiles\ dir=true target=F:\Temp\comic-downloader-portable-627579021\runtime\browser-profiles
+2026/04/19 23:30:03 extract entry: runtime\logs\ dir=true target=F:\Temp\comic-downloader-portable-627579021\runtime\logs
+2026/04/19 23:30:03 extract entry: runtime\output\ dir=true target=F:\Temp\comic-downloader-portable-627579021\runtime\output
+2026/04/19 23:30:03 extract entry: runtime\tasks\ dir=true target=F:\Temp\comic-downloader-portable-627579021\runtime\tasks
+2026/04/19 23:30:03 extract entry: runtime\thumbnails\ dir=true target=F:\Temp\comic-downloader-portable-627579021\runtime\thumbnails
+2026/04/19 23:30:03 extract entry: runtime\app.ico dir=false target=F:\Temp\comic-downloader-portable-627579021\runtime\app.ico
+2026/04/19 23:30:03 extract entry: runtime\chrome_stealth.js dir=false target=F:\Temp\comic-downloader-portable-627579021\runtime\chrome_stealth.js
+2026/04/19 23:30:03 extract entry: runtime\firefox_stealth.js dir=false target=F:\Temp\comic-downloader-portable-627579021\runtime\firefox_stealth.js
+2026/04/19 23:30:03 extract entry: runtime\browser-profiles\baseline-userdata\ dir=true target=F:\Temp\comic-downloader-portable-627579021\runtime\browser-profiles\baseline-userdata
+2026/04/19 23:30:03 extract entry: runtime\browser-profiles\tasks\ dir=true target=F:\Temp\comic-downloader-portable-627579021\runtime\browser-profiles\tasks
+2026/04/19 23:30:03 extract entry: runtime\browser-profiles\verification\ dir=true target=F:\Temp\comic-downloader-portable-627579021\runtime\browser-profiles\verification
+2026/04/19 23:30:03 extract entry: comic_downloader.exe dir=false target=F:\Temp\comic-downloader-portable-627579021\comic_downloader.exe
+2026/04/19 23:30:03 extract entry: README.txt dir=false target=F:\Temp\comic-downloader-portable-627579021\README.txt

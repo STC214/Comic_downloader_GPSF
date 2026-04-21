@@ -1,68 +1,79 @@
 # Browser Profile Flow
 
-This repository uses two browser entry paths:
+This repository currently uses a Firefox-first browser flow for the public UI.
+Firefox tasks launch from a fresh temporary Playwright profile, while Chromium remains available only for internal probe and compatibility work.
 
-- Chromium: bundled Chromium under `runtime/chromium/chrome.exe`
-- Firefox: system-installed Firefox discovered from the local machine
+## Current Firefox launch flow
 
-Both paths share the same task isolation model:
+1. Resolve the configured Firefox executable path.
+2. Create a brand-new temporary Playwright profile for the task.
+3. Launch Firefox with `playwright-go` using the temp directory as `userDataDir`.
+4. Inject `runtime/firefox_stealth.js` before any page script runs.
+5. Open the target URL.
+6. Wait until the browser window closes when `keep-open` is enabled.
+7. Remove the temporary profile after the session ends.
 
-1. Resolve the machine-local browser userdata path.
-2. Copy that source userdata into a task-scoped `original-userdata` directory.
-3. Copy `original-userdata` into a task-scoped `baseline-userdata` directory.
-4. Copy `baseline-userdata` into task-scoped `content` and `verify` directories.
-5. Launch the browser against the task-scoped profile directory.
-6. Remove the whole task profile root when the task finishes.
+## Current defaults
 
-## Site-to-browser mapping
+- Browser executable: user-configurable, with a system Firefox fallback in the code.
+- Browser install root in this workspace: `D:\Program\playwright-browsers`
+- Playwright driver directory in this workspace: `D:\Program\playwright-browsers\driver`
+- Default Firefox User-Agent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0`
+- Default locale: `en-US`
+- Default timezone: `Asia/Shanghai`
+- Default viewport: `1365x768`
 
-- `zeri` uses the Firefox browser path and then performs its final image transfer through Go-side HTTP.
-- `myreadingmanga`, `nyahentai`, and `hentai2` use Chromium by default.
-- The browser middleware injects the appropriate stealth script for the active browser type before pages are opened.
+## Direct browser entry
 
-## Chromium entry
+The browser middleware still accepts these request-time overrides:
 
-- Browser executable:
-  - Default: `runtime/chromium/chrome.exe`
-  - Override: UI/CLI `--chromium-path`
-- Source userdata:
-  - Auto-resolved from the local Windows machine when `UserDataPath` is not provided
-  - Default lookup first honors the Windows default browser association, then falls back to Chromium/Chrome/Edge-style profile paths
-- Stealth:
-  - Default script: `runtime/chrome_stealth.js`
-  - Injected by the browser middleware before any page is opened
+- `profile-dir`
+- `user-data-dir`
+- `user-agent`
+- `locale`
+- `timezone-id`
+- `viewport-width`
+- `viewport-height`
+- `firefox-user-prefs-json`
+- `headless`
+- `keep-open`
 
-## Firefox entry
+## Task-scoped profile directories
 
-- Browser executable:
-  - Auto-resolved from the local Windows install
-  - Common path candidates include `C:\Program Files\Mozilla Firefox\firefox.exe`
-- Source userdata:
-  - Auto-resolved from `APPDATA\Mozilla\Firefox\Profiles`
-  - The resolver prefers `profiles.ini` default profile entries first, then `*.default-release`, then `*.default`, then any existing profile
-- Stealth:
-  - Default script: `runtime/firefox_stealth.js`
-  - Injected by the browser middleware before any page is opened
-- First-run suppression:
-  - A task-scoped `user.js` is written into the Firefox profile copy to suppress the welcome/onboarding screen
+When a Firefox task needs its own profile, the runtime creates a fresh temp root under:
 
-## Task isolation directories
+- `runtime/browser-profiles/tasks/firefox-fresh-*`
 
-For a task `task-123`, the browser layer creates:
+That temp root is disposable and is removed after the task ends.
 
-- `runtime/browser-profiles/<worker>/task-123/original-userdata`
-- `runtime/browser-profiles/<worker>/task-123/content`
-- `runtime/browser-profiles/<worker>/task-123/verify`
-- `runtime/browser-profiles/baseline-userdata`
+When a Chromium probe is explicitly used, the runtime can still create:
 
-The `original-userdata` directory is always task-scoped and disposable.
-The task cleanup path removes the whole `task-123` profile root.
+- `runtime/browser-profiles/tasks/chromium-playwright-*`
+
+Those Chromium paths are internal only and are not part of the public UI flow.
 
 ## Why this matters
 
-The goal is to keep the browser runtime reproducible while still letting the task start from a real local browser profile:
+The goal is to keep the browser run reproducible while still starting from a temporary profile:
 
-- Chromium tasks start from the machine's default Chromium/Chrome-like userdata.
-- Firefox tasks start from the machine's default Firefox profile.
-- Both are copied into the repository runtime tree before task execution.
-- That makes per-task isolation easy to clean up and easy to verify.
+- Firefox task runs do not modify a shared mother profile in place.
+- Each task gets its own temp profile.
+- Temporary directories are cleaned at the end of the run.
+- The browser middleware stays responsible for stealth injection and launch defaults.
+
+## Useful browser self-check pages
+
+These built-in pages are the fastest way to verify which profile a browser is actually using:
+
+- `chrome://version`
+  - Best for Chromium and Chromium-based probes.
+  - Check `Profile Path` to confirm the exact profile directory in use.
+- `about:support`
+  - Best for Firefox.
+  - Check `Application Basics -> Profile Directory` to confirm the exact profile directory in use.
+- `about:profiles`
+  - Best for Firefox when you want to inspect all available profiles.
+  - It shows the active profile and its `Root Directory` and `Local Directory`.
+
+Use these pages when you need to confirm that a temporary profile is really the one being consumed by the browser.
+

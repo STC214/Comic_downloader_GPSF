@@ -26,7 +26,7 @@ func (m ChromiumMiddleware) toPlaywrightLaunchOptions(opts BrowserSessionOptions
 			"--disable-infobars",
 			"--no-sandbox",
 			"--disable-features=IsolateOrigins,site-per-process",
-			"--start-maximized", // Request the browser window to start maximized.
+			"--start-maximized",
 		},
 	}
 }
@@ -47,7 +47,6 @@ func (m ChromiumMiddleware) toPlaywrightContextOptions(opts BrowserSessionOption
 		contextOptions.TimezoneId = playwright.String(timezoneID)
 	}
 	contextOptions.NoViewport = playwright.Bool(true)
-
 	return contextOptions
 }
 
@@ -67,10 +66,9 @@ func (m ChromiumMiddleware) toPlaywrightPersistentContextOptions(opts BrowserSes
 			"--disable-features=IsolateOrigins,site-per-process",
 			"--disable-web-security",
 			"--profile-directory=Default",
-			"--start-maximized", // Keep the persistent launch maximized as well.
+			"--start-maximized",
 		},
 	}
-
 	if userAgent := strings.TrimSpace(m.resolveUserAgent(opts)); userAgent != "" {
 		contextOptions.UserAgent = playwright.String(userAgent)
 	}
@@ -81,7 +79,6 @@ func (m ChromiumMiddleware) toPlaywrightPersistentContextOptions(opts BrowserSes
 		contextOptions.TimezoneId = playwright.String(timezoneID)
 	}
 	contextOptions.NoViewport = playwright.Bool(true)
-
 	return contextOptions
 }
 
@@ -114,7 +111,7 @@ func openChromiumSession(m ChromiumMiddleware, opts BrowserSessionOptions) (*Chr
 		}()
 	}
 
-	releaseLock, err := projectruntime.AcquireBrowserSessionLock(m.RuntimeRoot())
+	releaseLock, err := projectruntime.AcquireBrowserSessionLockScoped(m.RuntimeRoot(), opts.LockScope)
 	if err != nil {
 		return nil, err
 	}
@@ -125,8 +122,7 @@ func openChromiumSession(m ChromiumMiddleware, opts BrowserSessionOptions) (*Chr
 		return nil, fmt.Errorf("start playwright: %w", err)
 	}
 
-	persistentOptions := m.toPlaywrightPersistentContextOptions(opts)
-	context, err := pw.Chromium.LaunchPersistentContext(spec.UserDataDir, persistentOptions)
+	context, err := pw.Chromium.LaunchPersistentContext(spec.UserDataDir, m.toPlaywrightPersistentContextOptions(opts))
 	if err != nil {
 		_ = pw.Stop()
 		_ = releaseLock()
@@ -141,9 +137,15 @@ func openChromiumSession(m ChromiumMiddleware, opts BrowserSessionOptions) (*Chr
 		_ = releaseLock()
 		return nil, fmt.Errorf("add stealth init script: %w", err)
 	}
+	if err := applyAdblockRules(context, opts.AdblockRulesPath); err != nil {
+		_ = context.Close()
+		_ = pw.Stop()
+		_ = releaseLock()
+		return nil, fmt.Errorf("apply adblock rules: %w", err)
+	}
 
-	var page playwright.Page
 	pages := context.Pages()
+	var page playwright.Page
 	if len(pages) > 0 {
 		page = pages[0]
 	} else {
@@ -168,8 +170,6 @@ func openChromiumSession(m ChromiumMiddleware, opts BrowserSessionOptions) (*Chr
 	if strings.TrimSpace(targetURL) == "" {
 		targetURL = m.URL()
 	}
-
-	// Navigate first, then apply a small amount of post-load interaction noise.
 	if _, err := page.Goto(targetURL, playwright.PageGotoOptions{
 		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
 	}); err != nil {
@@ -180,13 +180,11 @@ func openChromiumSession(m ChromiumMiddleware, opts BrowserSessionOptions) (*Chr
 		return nil, fmt.Errorf("goto %q: %w", targetURL, err)
 	}
 
-	// Add a small amount of interaction noise after navigation.
 	rand.Seed(time.Now().UnixNano())
 	for i := 0; i < 3; i++ {
 		_ = page.Mouse().Move(float64(100+rand.Intn(400)), float64(100+rand.Intn(400)))
 		time.Sleep(time.Duration(200+rand.Intn(300)) * time.Millisecond)
 	}
-
 	_ = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
 		State: playwright.LoadStateNetworkidle,
 	})
@@ -218,11 +216,6 @@ func closeChromiumSession(s *ChromiumSession) error {
 			firstErr = err
 		}
 	}
-	if browser, ok := s.Browser.(playwright.Browser); ok && browser != nil {
-		if err := browser.Close(); err != nil && firstErr == nil {
-			firstErr = err
-		}
-	}
 	if pw, ok := s.Playwright.(*playwright.Playwright); ok && pw != nil {
 		if err := pw.Stop(); err != nil && firstErr == nil {
 			firstErr = err
@@ -238,21 +231,18 @@ func closeChromiumSession(s *ChromiumSession) error {
 
 func chromiumSessionTitle(s *ChromiumSession) (string, error) {
 	if s == nil {
-		return "", errors.New("browser session is nil")
+		return "", errors.New("nil session")
 	}
 	page, ok := s.Page.(playwright.Page)
 	if !ok || page == nil {
-		return "", errors.New("browser session page is not a playwright.Page")
+		return "", errors.New("invalid page")
 	}
 	return page.Title()
 }
 
 func waitChromiumSessionClosed(s *ChromiumSession) error {
 	if s == nil {
-		return errors.New("browser session is nil")
-	}
-	if s.closed == nil {
-		return errors.New("browser session close channel is nil")
+		return errors.New("nil session")
 	}
 	<-s.closed
 	return nil
@@ -260,22 +250,22 @@ func waitChromiumSessionClosed(s *ChromiumSession) error {
 
 func chromiumSessionContent(s *ChromiumSession) (string, error) {
 	if s == nil {
-		return "", errors.New("browser session is nil")
+		return "", errors.New("nil session")
 	}
 	page, ok := s.Page.(playwright.Page)
 	if !ok || page == nil {
-		return "", errors.New("browser session page is not a playwright.Page")
+		return "", errors.New("invalid page")
 	}
 	return page.Content()
 }
 
 func chromiumSessionGoto(s *ChromiumSession, url string) error {
 	if s == nil {
-		return errors.New("browser session is nil")
+		return errors.New("nil session")
 	}
 	page, ok := s.Page.(playwright.Page)
 	if !ok || page == nil {
-		return errors.New("browser session page is not a playwright.Page")
+		return errors.New("invalid page")
 	}
 	if _, err := page.Goto(url); err != nil {
 		return err
@@ -286,11 +276,11 @@ func chromiumSessionGoto(s *ChromiumSession, url string) error {
 
 func chromiumSessionClickText(s *ChromiumSession, text string) error {
 	if s == nil {
-		return errors.New("browser session is nil")
+		return errors.New("nil session")
 	}
 	page, ok := s.Page.(playwright.Page)
 	if !ok || page == nil {
-		return errors.New("browser session page is not a playwright.Page")
+		return errors.New("invalid page")
 	}
 	if strings.TrimSpace(text) == "100%" {
 		button := page.Locator("#image_width1 button")
@@ -312,11 +302,11 @@ func chromiumSessionLoadLazyContent(s *ChromiumSession) error {
 
 func chromiumSessionLoadLazyContentForCount(s *ChromiumSession, expectedImageCount int) error {
 	if s == nil {
-		return errors.New("browser session is nil")
+		return errors.New("nil session")
 	}
 	page, ok := s.Page.(playwright.Page)
 	if !ok || page == nil {
-		return errors.New("browser session page is not a playwright.Page")
+		return errors.New("invalid page")
 	}
 	result, err := page.Evaluate(fmt.Sprintf(`async () => {
 		const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -332,16 +322,7 @@ func chromiumSessionLoadLazyContentForCount(s *ChromiumSession, expectedImageCou
 		const scrollBottom = () => window.scrollTo(0, Math.max(0, document.documentElement.scrollHeight - window.innerHeight));
 		const scrollBounce = async () => {
 			const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-			const points = [
-				0,
-				maxScroll * 0.25,
-				maxScroll * 0.5,
-				maxScroll * 0.75,
-				maxScroll,
-				maxScroll * 0.75,
-				maxScroll * 0.5,
-				maxScroll * 0.25,
-			];
+			const points = [0, maxScroll * 0.25, maxScroll * 0.5, maxScroll * 0.75, maxScroll, maxScroll * 0.5, 0];
 			for (const point of points) {
 				window.scrollTo(0, Math.max(0, Math.floor(point)));
 				window.dispatchEvent(new Event('scroll'));
@@ -350,7 +331,12 @@ func chromiumSessionLoadLazyContentForCount(s *ChromiumSession, expectedImageCou
 		};
 		for (let i = 0; i < 60; i++) {
 			const stats = imageStats();
-			if (stats.allLoaded) {
+			if (stats.target > 0 && stats.loaded >= stats.target) {
+				scrollTop();
+				await sleep(150);
+				return stats;
+			}
+			if (stats.target <= 0 && stats.allLoaded) {
 				scrollTop();
 				await sleep(150);
 				return stats;
@@ -369,9 +355,9 @@ func chromiumSessionLoadLazyContentForCount(s *ChromiumSession, expectedImageCou
 		return err
 	}
 	if stats, ok := result.(map[string]any); ok {
-		total := int(asFloat64(stats["total"]))
-		loaded := int(asFloat64(stats["loaded"]))
-		target := int(asFloat64(stats["target"]))
+		total := int(chromiumAsFloat64(stats["total"]))
+		loaded := int(chromiumAsFloat64(stats["loaded"]))
+		target := int(chromiumAsFloat64(stats["target"]))
 		if target <= 0 {
 			target = total
 		}
@@ -380,4 +366,21 @@ func chromiumSessionLoadLazyContentForCount(s *ChromiumSession, expectedImageCou
 		}
 	}
 	return nil
+}
+
+func chromiumAsFloat64(value any) float64 {
+	switch v := value.(type) {
+	case float64:
+		return v
+	case float32:
+		return float64(v)
+	case int:
+		return float64(v)
+	case int32:
+		return float64(v)
+	case int64:
+		return float64(v)
+	default:
+		return 0
+	}
 }

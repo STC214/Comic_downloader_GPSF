@@ -43,6 +43,7 @@ type BrowserPaths struct {
 	BrowserTasksRoot     string
 	BrowserVerifyRoot    string
 	BrowserBaselineRoot  string
+	ThumbnailsRoot       string
 	FirefoxUserDataDir   string
 	FirefoxStealthScript string
 }
@@ -62,7 +63,7 @@ func NewBrowserPaths(workspaceRoot string) BrowserPaths {
 	if workspaceRoot == "" {
 		workspaceRoot = "."
 	}
-	runtimeRoot := filepath.Join(workspaceRoot, "runtime")
+	runtimeRoot := ResolveRuntimeRoot(workspaceRoot)
 	return BrowserPaths{
 		WorkspaceRoot:        workspaceRoot,
 		RuntimeRoot:          runtimeRoot,
@@ -70,6 +71,7 @@ func NewBrowserPaths(workspaceRoot string) BrowserPaths {
 		BrowserTasksRoot:     filepath.Join(runtimeRoot, "browser-profiles", "tasks"),
 		BrowserVerifyRoot:    filepath.Join(runtimeRoot, "browser-profiles", "verification"),
 		BrowserBaselineRoot:  filepath.Join(runtimeRoot, "browser-profiles", "baseline-userdata"),
+		ThumbnailsRoot:       filepath.Join(runtimeRoot, "thumbnails"),
 		FirefoxUserDataDir:   filepath.Join(runtimeRoot, "browser-profiles", "baseline-userdata"),
 		FirefoxStealthScript: filepath.Join(runtimeRoot, "firefox_stealth.js"),
 	}
@@ -150,6 +152,11 @@ func (p BrowserPaths) TaskBrowserContentUserData(browserType BrowserType, worker
 // TaskVerifyUserData returns the exact task-scoped verify profile path.
 func (p BrowserPaths) TaskVerifyUserData(workerID, taskID string) string {
 	return filepath.Join(p.TaskRoot(workerID, taskID), "verify")
+}
+
+// TaskThumbnailPath returns the exact task-scoped thumbnail path.
+func (p BrowserPaths) TaskThumbnailPath(taskID string) string {
+	return filepath.Join(p.ThumbnailsRoot, "task-"+normalizeRoot(taskID), "thumb.jpg")
 }
 
 // TaskBrowserVerifyUserData returns the exact task-scoped verify profile path for one browser family.

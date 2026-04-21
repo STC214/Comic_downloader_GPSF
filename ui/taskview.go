@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"comic_downloader_go_playwright_stealth/runtime"
@@ -26,6 +27,7 @@ type TaskView struct {
 	PageType           string
 	OutputRoot         string
 	ThumbnailRoot      string
+	ThumbnailPath      string
 	StatePath          string
 	ReportPath         string
 	LogPath            string
@@ -61,6 +63,8 @@ func LoadTaskView(reportPath string) (TaskView, error) {
 	if err := json.Unmarshal(data, &report); err != nil {
 		return TaskView{}, fmt.Errorf("unmarshal task report %q: %w", reportPath, err)
 	}
+	reportRoot := runtimeRootFromReportPath(reportPath)
+	thumbnailPath := resolveStoredTaskPath(reportRoot, reportPath, report.ThumbnailPath)
 	return TaskView{
 		TaskID:             report.TaskID,
 		Title:              report.Manifest.Title,
@@ -72,11 +76,12 @@ func LoadTaskView(reportPath string) (TaskView, error) {
 		BrowserPath:        report.BrowserPath,
 		BrowserMode:        report.BrowserMode,
 		PageType:           report.PageType,
-		OutputRoot:         report.OutputRoot,
-		ThumbnailRoot:      report.ThumbnailRoot,
-		StatePath:          report.StatePath,
-		ReportPath:         report.ReportPath,
-		LogPath:            report.LogPath,
+		OutputRoot:         resolveStoredTaskPath(reportRoot, reportPath, report.OutputRoot),
+		ThumbnailRoot:      resolveStoredTaskPath(reportRoot, reportPath, report.ThumbnailRoot),
+		ThumbnailPath:      thumbnailPath,
+		StatePath:          resolveStoredTaskPath(reportRoot, reportPath, report.StatePath),
+		ReportPath:         resolveStoredTaskPath(reportRoot, reportPath, report.ReportPath),
+		LogPath:            resolveStoredTaskPath(reportRoot, reportPath, report.LogPath),
 		CreatedAt:          report.CreatedAt,
 		StartedAt:          report.StartedAt,
 		FinishedAt:         report.FinishedAt,
@@ -88,6 +93,70 @@ func LoadTaskView(reportPath string) (TaskView, error) {
 		Note:               report.Note,
 		AssetCount:         report.Manifest.AssetCount,
 	}, nil
+}
+
+func resolveStoredTaskPath(reportRoot, reportPath, storedPath string) string {
+	storedPath = strings.TrimSpace(storedPath)
+	if storedPath == "" {
+		return ""
+	}
+	if filepath.IsAbs(storedPath) {
+		return filepath.Clean(storedPath)
+	}
+	base := strings.TrimSpace(reportRoot)
+	if base == "" {
+		base = runtimeRootFromReportPath(reportPath)
+	}
+	if base != "" {
+		return filepath.Clean(filepath.Join(base, storedPath))
+	}
+	return filepath.Clean(storedPath)
+}
+
+func resolveTaskThumbnailPath(reportPath, taskID, storedPath string) string {
+	storedPath = strings.TrimSpace(storedPath)
+	taskID = strings.TrimSpace(taskID)
+	reportPath = strings.TrimSpace(reportPath)
+	if storedPath != "" {
+		if resolved := resolveStoredTaskPath("", reportPath, storedPath); resolved != "" {
+			if _, err := os.Stat(resolved); err == nil {
+				return resolved
+			}
+		}
+	}
+	if taskID != "" {
+		if runtimeRoot := runtimeRootFromReportPath(reportPath); runtimeRoot != "" {
+			roots := []string{runtimeRoot}
+			if filepath.Base(runtimeRoot) == "runtime" {
+				roots = append(roots, filepath.Dir(runtimeRoot))
+			}
+			for _, root := range roots {
+				paths := runtime.NewPaths(root)
+				candidate := paths.TaskThumbnailPath(taskID)
+				if _, err := os.Stat(candidate); err == nil {
+					return candidate
+				}
+			}
+		}
+	}
+	if storedPath != "" {
+		return resolveStoredTaskPath("", reportPath, storedPath)
+	}
+	return ""
+}
+
+func runtimeRootFromReportPath(reportPath string) string {
+	reportPath = strings.TrimSpace(reportPath)
+	if reportPath == "" {
+		return ""
+	}
+	reportDir := filepath.Clean(filepath.Dir(reportPath))
+	taskDir := filepath.Base(reportDir)
+	tasksDir := filepath.Base(filepath.Dir(reportDir))
+	if !strings.HasPrefix(taskDir, "task-") || tasksDir != "tasks" {
+		return ""
+	}
+	return filepath.Clean(filepath.Dir(filepath.Dir(reportDir)))
 }
 
 // LoadTaskDetails loads the full detail view for a task report.

@@ -3,11 +3,14 @@ package zeri
 import (
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -42,17 +45,19 @@ func DownloadImages(summary SummaryPage, imageURLs []string, outputRoot string, 
 		return DownloadResult{}, fmt.Errorf("image urls are empty")
 	}
 
-	chapterDir := filepath.Join(outputRoot, "zeri")
+	chapterDir := outputRoot
 	if title := sanitizePathPart(summary.Title); title != "" {
 		chapterDir = filepath.Join(chapterDir, title)
 	}
 	if err := os.MkdirAll(chapterDir, 0o755); err != nil {
 		return DownloadResult{}, fmt.Errorf("create output dir %q: %w", chapterDir, err)
 	}
+	log.Printf("zeri download resolved dir: summary=%q outputRoot=%s chapterDir=%s images=%d", summary.Title, outputRoot, chapterDir, len(imageURLs))
 
 	files := make([]string, 0, len(imageURLs))
 	var totalBytes int64
 	usedNames := make(map[string]int, len(imageURLs))
+	log.Printf("zeri download begin: title=%q images=%d", summary.Title, len(imageURLs))
 	report := func(current int, phase, message string) {
 		if progress == nil {
 			return
@@ -71,19 +76,22 @@ func DownloadImages(summary SummaryPage, imageURLs []string, outputRoot string, 
 		})
 	}
 
-	report(0, "准备", "开始下载")
+	report(0, "开始", "准备下载")
 	for i, raw := range imageURLs {
-		report(i, "下载中", fmt.Sprintf("%d/%d", i, len(imageURLs)))
+		log.Printf("zeri download image start: %d/%d url=%s", i+1, len(imageURLs), raw)
+		report(i, "downloading", fmt.Sprintf("%d/%d", i, len(imageURLs)))
 		saved, written, err := downloadOneImage(raw, chapterDir, i+1, usedNames)
 		if err != nil {
 			return DownloadResult{}, err
 		}
 		files = append(files, saved)
 		totalBytes += written
-		report(i+1, "下载中", fmt.Sprintf("%d/%d", i+1, len(imageURLs)))
+		log.Printf("zeri download image done: %d/%d file=%s bytes=%d", i+1, len(imageURLs), saved, written)
+		report(i+1, "downloading", fmt.Sprintf("%d/%d", i+1, len(imageURLs)))
 	}
 	report(len(imageURLs), "完成", "下载完成")
 
+	log.Printf("zeri download complete: files=%d bytes=%d dir=%s", len(files), totalBytes, chapterDir)
 	return DownloadResult{
 		OutputDir: chapterDir,
 		Files:     files,
@@ -195,19 +203,101 @@ func sanitizePathPart(text string) string {
 	}
 	var b strings.Builder
 	b.Grow(len(text))
-	lastDash := false
+	count := 0
+	lastUnderscore := false
 	for _, r := range text {
+		if count >= 64 {
+			break
+		}
+		out := '_'
 		switch {
 		case unicode.IsLetter(r), unicode.IsNumber(r):
-			b.WriteRune(r)
-			lastDash = false
+			out = r
 		case r == ' ' || r == '-' || r == '_' || r == '.':
-			if !lastDash {
-				b.WriteRune('-')
-				lastDash = true
-			}
+			out = '_'
+		default:
+			out = '_'
 		}
+		if out == '_' {
+			if lastUnderscore {
+				continue
+			}
+			lastUnderscore = true
+		} else {
+			lastUnderscore = false
+		}
+		b.WriteRune(out)
+		count++
 	}
-	out := strings.Trim(b.String(), "-")
+	out := strings.Trim(b.String(), "_")
 	return out
+}
+
+// SelectThumbnailSource picks the best downloaded file for the task thumbnail.
+// It prefers a file whose base name is exactly 1 or 01, and falls back to the
+// smallest positive numeric base name when no exact first-page match exists.
+func SelectThumbnailSource(files []string) string {
+	files = normalizeUniqueStrings(files)
+	if len(files) == 0 {
+		return ""
+	}
+
+	exact := make([]string, 0, 2)
+	type numericCandidate struct {
+		path  string
+		value int
+	}
+	numeric := make([]numericCandidate, 0, len(files))
+
+	for _, file := range files {
+		base := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+		base = strings.TrimSpace(base)
+		if base == "" {
+			continue
+		}
+		switch base {
+		case "1", "01":
+			exact = append(exact, file)
+			continue
+		}
+
+		digits := base
+		for len(digits) > 0 && digits[0] == '0' {
+			digits = digits[1:]
+		}
+		if digits == "" {
+			digits = "0"
+		}
+		value, err := strconv.Atoi(digits)
+		if err != nil || value <= 0 {
+			continue
+		}
+		numeric = append(numeric, numericCandidate{path: file, value: value})
+	}
+
+	if len(exact) > 0 {
+		if len(exact) == 1 {
+			return exact[0]
+		}
+		sort.SliceStable(exact, func(i, j int) bool {
+			li := len(strings.TrimSuffix(filepath.Base(exact[i]), filepath.Ext(exact[i])))
+			lj := len(strings.TrimSuffix(filepath.Base(exact[j]), filepath.Ext(exact[j])))
+			if li != lj {
+				return li < lj
+			}
+			return exact[i] < exact[j]
+		})
+		return exact[0]
+	}
+
+	if len(numeric) == 0 {
+		return files[0]
+	}
+	sort.SliceStable(numeric, func(i, j int) bool {
+		if numeric[i].value != numeric[j].value {
+			return numeric[i].value < numeric[j].value
+		}
+		return numeric[i].path < numeric[j].path
+	})
+	return numeric[0].path
 }

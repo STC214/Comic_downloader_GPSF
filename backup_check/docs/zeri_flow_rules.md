@@ -2,6 +2,8 @@
 
 This document records the current `zeri` page-processing rules so the browser flow can be rebuilt cleanly.
 
+The public UI currently runs this flow through Firefox.
+
 ## Inputs
 
 - User entry URL is the summary/article page.
@@ -13,7 +15,7 @@ This document records the current `zeri` page-processing rules so the browser fl
 2. The summary page contains the expected page count in text like:
    - `Length : 14 pages`
 3. The number in `Length : N pages` is the expected image count for the full reader flow.
-4. The summary page contains exactly two `div.row` blocks that point to the reader page.
+4. The summary page contains two `div.row` blocks that point to the reader page.
 5. The reader page URL must be resolved from those `div.row` blocks first.
 6. The summary page must not be used as the final download source.
 7. The summary page must not download cover art as chapter content.
@@ -21,12 +23,13 @@ This document records the current `zeri` page-processing rules so the browser fl
 ## Reader page rules
 
 1. The reader page must be entered before collecting any final images.
-2. After the reader page is open, click the `100%` button once.
-3. Only after the `100%` click should the page be re-read for image URLs.
+2. After the reader page is open, click the `100%` button once using a real mouse click on the `#image_width1 button` control.
+3. After the `100%` click, repeatedly scroll the page up and down until the target reader images have all finished loading.
 4. Each reader pagination page must also follow the same order:
    - open the page
    - click `100%`
-   - re-collect the page images
+   - scroll until the target images are all loaded
+   - then re-collect the page images
 5. The reader pager exists in both:
    - `#page_num1`
    - `#page_num2`
@@ -39,7 +42,9 @@ This document records the current `zeri` page-processing rules so the browser fl
 3. Each shared signature must be at least 6 digits long.
 4. All valid reader image URLs must share the same pair of numeric signatures.
 5. If cover images or list thumbnails do not match those shared signatures, they must be excluded.
-6. After filtering, the final collected image count should match the expected page count from the summary page.
+6. Downloaded files should keep the original image filename when possible, with a suffix only for collisions.
+7. The image decoder must accept common comic formats such as JPG, PNG, GIF, WebP, and AVIF.
+8. After filtering, the final collected image count should match the expected page count from the summary page.
 
 ## Navigation rules
 
@@ -54,18 +59,15 @@ This document records the current `zeri` page-processing rules so the browser fl
 - If the reader page cannot be resolved, fail early and log the summary page HTML snapshot.
 - If the reader page opens but the image count is lower than the summary page `Length : N pages`, treat it as a mismatch.
 - If the final collected images are empty, do not fall back to list-page cover images.
+- If a challenge page or verification page appears instead of the reader content, stop and mark the task as blocked.
 
-## Notes for tomorrow
+## Notes
 
-- The current refactor should be split into:
-  - summary page parsing
-  - reader page activation
-  - reader page image filtering
-  - pagination handling
-  - download execution
 - Keep the summary page and reader page responsibilities separate.
 - Prefer explicit logging of:
   - resolved reader URL
   - expected page count
   - pagination URLs
   - collected image count
+- The download pipeline currently preserves source filenames and produces JPG output files.
+

@@ -1,31 +1,31 @@
 # Browser Profile Flow
 
-This repository currently uses a Firefox-first browser middleware.
-The browser layer starts from the selected project-owned Firefox working profile, copies it into a temporary Playwright profile, and launches Firefox from that temporary copy.
+This repository currently uses a Firefox-first browser flow for the public UI.
+Firefox tasks launch from a fresh temporary Playwright profile, while Chromium remains available only for internal probe and compatibility work.
 
-## Current launch flow
+## Current Firefox launch flow
 
-1. Resolve the selected Firefox working profile directory.
-2. Copy that entire directory into a fresh temporary Playwright profile under `runtime/browser-profiles/tasks/`.
-3. Launch Firefox with `playwright-go` using the copied temp directory as `userDataDir`.
-4. Inject `runtime/firefox_stealth.js` before any page runs.
+1. Resolve the configured Firefox executable path.
+2. Create a brand-new temporary Playwright profile for the task.
+3. Launch Firefox with `playwright-go` using the temp directory as `userDataDir`.
+4. Inject `runtime/firefox_stealth.js` before any page script runs.
 5. Open the target URL.
-6. Wait until the page or window closes when `keep-open` is enabled.
-7. Remove the temporary Playwright profile after the session ends.
+6. Wait until the browser window closes when `keep-open` is enabled.
+7. Remove the temporary profile after the session ends.
 
 ## Current defaults
 
-- Browser executable: `C:\Program Files\Mozilla Firefox\firefox.exe`
-- Selected mother profile source for refresh: `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\aocfvl86.default-default-3`
-- Selected working profile used by tasks: `runtime/browser-profiles/baseline-userdata`
-- Default User-Agent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0`
+- Browser executable: user-configurable, with a system Firefox fallback in the code.
+- Browser install root in this workspace: `D:\Program\playwright-browsers`
+- Playwright driver directory in this workspace: `D:\Program\playwright-browsers\driver`
+- Default Firefox User-Agent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0`
 - Default locale: `en-US`
 - Default timezone: `Asia/Shanghai`
 - Default viewport: `1365x768`
 
 ## Direct browser entry
 
-The browser middleware exposes the following request-time overrides:
+The browser middleware still accepts these request-time overrides:
 
 - `profile-dir`
 - `user-data-dir`
@@ -40,33 +40,34 @@ The browser middleware exposes the following request-time overrides:
 
 ## Task-scoped profile directories
 
-When a task needs its own copied profile, the runtime creates:
+When a Firefox task needs its own profile, the runtime creates a fresh temp root under:
 
-- `runtime/browser-profiles/tasks/firefox/<worker>/task-<id>/original-userdata`
-- `runtime/browser-profiles/tasks/firefox/<worker>/task-<id>/content`
-- `runtime/browser-profiles/tasks/firefox/<worker>/task-<id>/verify`
+- `runtime/browser-profiles/tasks/firefox-fresh-*`
 
-When a direct browser probe runs without task ownership, the runtime creates a temporary Playwright profile directory under:
+That temp root is disposable and is removed after the task ends.
 
-- `runtime/browser-profiles/tasks/firefox-playwright-*`
+When a Chromium probe is explicitly used, the runtime creates a brand-new temporary profile under:
 
-Both styles are disposable and are removed after the run finishes.
+- `runtime/browser-profiles/tasks/chromium-fresh-*`
+
+Those Chromium paths are internal only and are not part of the public UI flow.
 
 ## Why this matters
 
-The goal is to keep the browser run reproducible while still starting from a real local Firefox profile:
+The goal is to keep the browser run reproducible while still starting from a temporary profile:
 
-- The selected working profile is copied, not modified in place.
-- The browser always launches from a temporary directory.
-- Temporary directories are cleaned up at the end of the run.
-- The browser middleware is the single place that owns stealth injection and launch defaults.
+- Firefox task runs do not modify a shared mother profile in place.
+- Each task gets its own temp profile.
+- Temporary directories are cleaned at the end of the run.
+- The browser middleware stays responsible for stealth injection and launch defaults.
+- The portable build persists settings and history beside the executable in `portable-data/`.
 
 ## Useful browser self-check pages
 
 These built-in pages are the fastest way to verify which profile a browser is actually using:
 
 - `chrome://version`
-  - Best for Chromium and Chromium-based browsers.
+  - Best for Chromium and Chromium-based probes.
   - Check `Profile Path` to confirm the exact profile directory in use.
 - `about:support`
   - Best for Firefox.
@@ -75,4 +76,4 @@ These built-in pages are the fastest way to verify which profile a browser is ac
   - Best for Firefox when you want to inspect all available profiles.
   - It shows the active profile and its `Root Directory` and `Local Directory`.
 
-Use these pages when you need to confirm that a copied temporary profile is really the one being consumed by the browser.
+Use these pages when you need to confirm that a temporary profile is really the one being consumed by the browser.

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -27,7 +28,8 @@ func TestTodoListAddsPendingItems(t *testing.T) {
 
 func TestTodoListRunImmediatelyCompletesItem(t *testing.T) {
 	list := NewTodoList()
-	item, err := list.RunImmediately(tasks.BrowserLaunchRequest{URL: "https://example.com"}, func(req tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error) {
+	runtimeRoot := t.TempDir()
+	item, err := list.RunImmediately(tasks.BrowserLaunchRequest{URL: "https://example.com", RuntimeRoot: runtimeRoot}, func(req tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error) {
 		return tasks.BrowserRunResult{URL: req.URL, Title: "ok"}, nil
 	})
 	if err != nil {
@@ -41,6 +43,71 @@ func TestTodoListRunImmediatelyCompletesItem(t *testing.T) {
 	}
 	if len(list.Items()) != 1 {
 		t.Fatalf("len(Items()) = %d, want 1", len(list.Items()))
+	}
+	reportPath := filepath.Join(runtimeRoot, "tasks", "task-"+item.ID, "report.json")
+	if _, err := os.Stat(reportPath); err != nil {
+		t.Fatalf("saved report not found: %v", err)
+	}
+}
+
+func TestTodoListConcurrencyLimitSerializesImmediateRuns(t *testing.T) {
+	list := NewTodoList()
+	list.SetConcurrencyLimit(1)
+	runtimeRoot := t.TempDir()
+
+	started := make(chan string, 2)
+	releaseFirst := make(chan struct{})
+	runner := func(req tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error) {
+		started <- req.TaskID
+		if req.TaskID == "todo-001" {
+			<-releaseFirst
+		}
+		return tasks.BrowserRunResult{URL: req.URL, Title: req.TaskID}, nil
+	}
+
+	done1 := make(chan error, 1)
+	go func() {
+		_, err := list.RunImmediately(tasks.BrowserLaunchRequest{URL: "https://one.example", RuntimeRoot: runtimeRoot}, runner)
+		done1 <- err
+	}()
+
+	select {
+	case id := <-started:
+		if id != "todo-001" {
+			t.Fatalf("first started task = %q, want todo-001", id)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("first task did not start")
+	}
+
+	done2 := make(chan error, 1)
+	go func() {
+		_, err := list.RunImmediately(tasks.BrowserLaunchRequest{URL: "https://two.example", RuntimeRoot: runtimeRoot}, runner)
+		done2 <- err
+	}()
+
+	select {
+	case id := <-started:
+		t.Fatalf("second task started early: %q", id)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	close(releaseFirst)
+
+	select {
+	case id := <-started:
+		if id != "todo-002" {
+			t.Fatalf("second started task = %q, want todo-002", id)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("second task did not start after slot was released")
+	}
+
+	if err := <-done1; err != nil {
+		t.Fatalf("first task error = %v", err)
+	}
+	if err := <-done2; err != nil {
+		t.Fatalf("second task error = %v", err)
 	}
 }
 
@@ -145,5 +212,66 @@ func TestTodoListClearFinishedRemovesCompletedItems(t *testing.T) {
 	}
 	if len(list.Items()) != 0 {
 		t.Fatalf("len(Items()) = %d, want 0", len(list.Items()))
+	}
+}
+
+func TestTodoListSortsRunningFailedCompletedByIDDesc(t *testing.T) {
+	list := NewTodoList()
+	list.mu.Lock()
+	list.items = []TodoItem{
+		{ID: "todo-10", Status: TodoStatusCompleted, CreatedAt: time.Unix(10, 0).UTC()},
+		{ID: "todo-2", Status: TodoStatusFailed, CreatedAt: time.Unix(20, 0).UTC()},
+		{ID: "todo-7", Status: TodoStatusRunning, CreatedAt: time.Unix(30, 0).UTC()},
+		{ID: "todo-5", Status: TodoStatusCompleted, CreatedAt: time.Unix(40, 0).UTC()},
+		{ID: "todo-8", Status: TodoStatusFailed, CreatedAt: time.Unix(50, 0).UTC()},
+		{ID: "todo-3", Status: TodoStatusRunning, CreatedAt: time.Unix(60, 0).UTC()},
+	}
+	list.mu.Unlock()
+
+	items := list.Items()
+	want := []string{"todo-7", "todo-3", "todo-8", "todo-2", "todo-10", "todo-5"}
+	if len(items) != len(want) {
+		t.Fatalf("len(items) = %d, want %d", len(items), len(want))
+	}
+	for i, item := range items {
+		if item.ID != want[i] {
+			t.Fatalf("items[%d].ID = %q, want %q", i, item.ID, want[i])
+		}
+	}
+}
+
+func TestTodoListStartAllIncludesRestartableStatuses(t *testing.T) {
+	list := NewTodoList()
+	workspace := t.TempDir()
+	runtimeRoot := filepath.Join(workspace, "runtime")
+	list.mu.Lock()
+	list.items = []TodoItem{
+		{ID: "todo-1", Status: TodoStatusPaused, Request: tasks.BrowserLaunchRequest{URL: "https://paused.example", RuntimeRoot: runtimeRoot}},
+		{ID: "todo-2", Status: TodoStatusFailed, Request: tasks.BrowserLaunchRequest{URL: "https://failed.example", RuntimeRoot: runtimeRoot}},
+		{ID: "todo-3", Status: TodoStatusPending, Request: tasks.BrowserLaunchRequest{URL: "https://pending.example", RuntimeRoot: runtimeRoot}},
+		{ID: "todo-4", Status: TodoStatusCompleted, Request: tasks.BrowserLaunchRequest{URL: "https://done.example", RuntimeRoot: runtimeRoot}},
+	}
+	list.mu.Unlock()
+
+	items, err := list.StartAllUnfinished(workspace, func(req tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error) {
+		return tasks.BrowserRunResult{URL: req.URL, Title: req.TaskID}, nil
+	})
+	if err != nil {
+		t.Fatalf("StartAllUnfinished() error = %v", err)
+	}
+	if len(items) != 3 {
+		t.Fatalf("len(items) = %d, want 3", len(items))
+	}
+	if item, ok := list.ItemByID("todo-4"); !ok || item.Status != TodoStatusCompleted {
+		t.Fatalf("completed item changed unexpectedly: ok=%v status=%v", ok, item.Status)
+	}
+	for _, id := range []string{"todo-1", "todo-2", "todo-3"} {
+		item, ok := list.ItemByID(id)
+		if !ok {
+			t.Fatalf("missing item %s", id)
+		}
+		if item.Status != TodoStatusCompleted {
+			t.Fatalf("item %s status = %q, want completed", id, item.Status)
+		}
 	}
 }

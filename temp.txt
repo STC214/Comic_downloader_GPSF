@@ -7,4 +7,3 @@ set TMP=%cd%\.gotmp
 go run -tags playwright .\cmd\task-probe --url="https://zeri-m.top/index.php?route=comic/article&c_id=6f3f7498219568e9270aaab6c409402f&comic_id=1284448" --headless=false --keep-open=true --runtime-root="runtime" --profile-dir="runtime\browser-profiles\baseline-userdata" --worker-id=ui --task-id=task-001
 
 
-https://myreadingmanga.info/

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 
+	projectruntime "comic_downloader_go_playwright_stealth/runtime"
 	"comic_downloader_go_playwright_stealth/tasks"
 )
 
@@ -36,6 +37,16 @@ func main() {
 	adblock := flag.Bool("adblock", true, "enable adblock flag in middleware")
 	keepOpen := flag.Bool("keep-open", false, "keep the browser open until the window is closed")
 	flag.Parse()
+	if cleanup, logPath, err := projectruntime.InitProcessLogging(*runtimeRoot, "task-probe"); err != nil {
+		log.Fatalf("init task-probe logging: %v", err)
+	} else {
+		log.Printf("task-probe logging: %s", logPath)
+		defer func() {
+			if err := cleanup(); err != nil {
+				log.Printf("close task-probe log: %v", err)
+			}
+		}()
+	}
 
 	req := tasks.BrowserLaunchRequest{
 		URL:                  *url,
@@ -66,8 +77,10 @@ func main() {
 	if err != nil {
 		log.Fatalf("run browser request: %v", err)
 	}
+	log.Printf("task-probe title: %s", result.Title)
 	fmt.Println(result.Title)
 	if result.PlaywrightProfileDir != "" {
+		log.Printf("task-probe profile: %s", result.PlaywrightProfileDir)
 		fmt.Println(result.PlaywrightProfileDir)
 	}
 }

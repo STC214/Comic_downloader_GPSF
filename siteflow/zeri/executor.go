@@ -2,6 +2,7 @@ package zeri
 
 import (
 	"fmt"
+	"log"
 	"net/url"
 	"strings"
 
@@ -34,17 +35,17 @@ func IsZeriURL(raw string) bool {
 	return strings.Contains(host, "zeri-m.top") || strings.Contains(host, "zeri")
 }
 
-// Execute resolves the summary page, navigates to the reader page, and activates reader zoom.
+// Execute resolves the summary page, navigates to the reader page, and parses reader content.
 func Execute(session browser.BrowserPageActions, summaryURL string) (ExecutionResult, error) {
 	return ExecuteWithProgress(session, summaryURL, nil)
 }
 
-// ExecuteWithProgress resolves the summary page, navigates to the reader page, activates reader zoom,
-// and reports overall progress as the flow advances.
+// ExecuteWithProgress resolves the summary page, navigates to the reader page, and reports overall progress as the flow advances.
 func ExecuteWithProgress(session browser.BrowserPageActions, summaryURL string, progress DownloadProgressFunc) (ExecutionResult, error) {
 	if session == nil {
 		return ExecutionResult{}, fmt.Errorf("browser session is nil")
 	}
+	log.Printf("zeri execute start: summary=%s", summaryURL)
 	report := func(current, total int, fraction float64, phase, message string) {
 		if progress == nil {
 			return
@@ -67,6 +68,7 @@ func ExecuteWithProgress(session browser.BrowserPageActions, summaryURL string, 
 	if err != nil {
 		return ExecutionResult{}, err
 	}
+	log.Printf("zeri summary parsed: title=%q pages=%d readerURL=%s", summary.Title, summary.PageCount, summary.ReaderURL)
 	if summary.ReaderURL == "" {
 		return ExecutionResult{}, fmt.Errorf("reader url not found in summary page")
 	}
@@ -81,14 +83,15 @@ func ExecuteWithProgress(session browser.BrowserPageActions, summaryURL string, 
 	if err := session.Goto(summary.ReaderURL); err != nil {
 		return ExecutionResult{}, fmt.Errorf("goto reader url %q: %w", summary.ReaderURL, err)
 	}
+	log.Printf("zeri reader goto: %s", summary.ReaderURL)
 
-	reader, activationClicks, err := hydrateReaderPage(session, summaryURL, summary.ReaderURL)
+	reader, err := hydrateReaderPage(session, summaryURL, summary.ReaderURL)
 	if err != nil {
 		return ExecutionResult{}, err
 	}
 	report(0, 0, 0.30*parseWeight, "parse", "reader")
 
-	paginationPages, collectedImages, paginationClicks, err := walkReaderPagination(session, summaryURL, reader, func(current, total int) {
+	paginationPages, collectedImages, err := walkReaderPagination(session, summaryURL, reader, func(current, total int) {
 		if progress == nil || total <= 0 {
 			return
 		}
@@ -107,6 +110,7 @@ func ExecuteWithProgress(session browser.BrowserPageActions, summaryURL string, 
 		return ExecutionResult{}, err
 	}
 	collectedImages = mergeUniqueStrings(append(reader.FilteredImageURLs, collectedImages...))
+	log.Printf("zeri reader walk done: pages=%d images=%d", len(paginationPages), len(collectedImages))
 	report(len(paginationPages), len(paginationPages), parseWeight, "parse", "done")
 
 	return ExecutionResult{
@@ -114,79 +118,75 @@ func ExecuteWithProgress(session browser.BrowserPageActions, summaryURL string, 
 		Reader:                     reader,
 		PaginationPages:            paginationPages,
 		CollectedImages:            collectedImages,
-		ActivationClicks:           activationClicks,
-		PaginationActivationClicks: paginationClicks,
+		ActivationClicks:           0,
+		PaginationActivationClicks: 0,
 		FinalURL:                   reader.URL,
 		FinalTitle:                 reader.Title,
 	}, nil
 }
 
-func walkReaderPagination(session browser.BrowserPageActions, summaryURL string, first ReaderPage, progress func(current, total int)) ([]ReaderPage, []string, int, error) {
+func walkReaderPagination(session browser.BrowserPageActions, summaryURL string, first ReaderPage, progress func(current, total int)) ([]ReaderPage, []string, error) {
 	paginationURLs := mergeUniqueStrings(first.PaginationURLs)
 	paginationPages := make([]ReaderPage, 0, len(paginationURLs))
 	collectedImages := make([]string, 0)
-	activationClicks := 0
 	total := len(paginationURLs)
+	log.Printf("zeri pagination start: pages=%d first=%s", total, first.URL)
 
 	for _, pageURL := range paginationURLs {
 		if strings.TrimSpace(pageURL) == "" {
 			continue
 		}
+		log.Printf("zeri pagination step: goto=%s", pageURL)
 		if pageURL != first.URL {
 			if err := session.Goto(pageURL); err != nil {
-				return nil, nil, 0, fmt.Errorf("goto pagination url %q: %w", pageURL, err)
+				return nil, nil, fmt.Errorf("goto pagination url %q: %w", pageURL, err)
 			}
 		}
-		page, clicked, err := hydrateReaderPage(session, summaryURL, pageURL)
+		page, err := hydrateReaderPage(session, summaryURL, pageURL)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, nil, err
 		}
-		activationClicks += clicked
 		paginationPages = append(paginationPages, page)
 		collectedImages = append(collectedImages, page.FilteredImageURLs...)
+		log.Printf("zeri pagination parsed: url=%s title=%q imageURLs=%d filtered=%d", pageURL, page.Title, len(page.ImageURLs), len(page.FilteredImageURLs))
 		if progress != nil {
 			progress(len(paginationPages), total)
 		}
 	}
 
-	return paginationPages, mergeUniqueStrings(collectedImages), activationClicks, nil
+	return paginationPages, mergeUniqueStrings(collectedImages), nil
 }
 
-func hydrateReaderPage(session browser.BrowserPageActions, summaryURL, pageURL string) (ReaderPage, int, error) {
+func hydrateReaderPage(session browser.BrowserPageActions, summaryURL, pageURL string) (ReaderPage, error) {
 	initialHTML, err := session.Content()
 	if err != nil {
-		return ReaderPage{}, 0, fmt.Errorf("read reader html %q: %w", pageURL, err)
+		return ReaderPage{}, fmt.Errorf("read reader html %q: %w", pageURL, err)
 	}
 	page, err := ParseReaderPage(summaryURL, pageURL, initialHTML)
 	if err != nil {
-		return ReaderPage{}, 0, err
+		return ReaderPage{}, err
 	}
-
-	activationClicks := 0
-	if page.HasZoom100 || strings.Contains(initialHTML, "100%") {
-		if err := session.ClickText("100%"); err != nil {
-			return ReaderPage{}, 0, fmt.Errorf("click 100%% at %q: %w", pageURL, err)
-		}
-		activationClicks = 1
-	}
+	log.Printf("zeri reader initial parse: url=%s title=%q imageURLs=%d filtered=%d has100=%t", pageURL, page.Title, len(page.ImageURLs), len(page.FilteredImageURLs), page.HasZoom100)
 
 	expectedImages := len(page.FilteredImageURLs)
 	if expectedImages <= 0 {
 		expectedImages = len(page.ImageURLs)
 	}
+	log.Printf("zeri reader lazy wait: url=%s expectedImages=%d", pageURL, expectedImages)
 	if err := session.LoadLazyContentForCount(expectedImages); err != nil {
-		return ReaderPage{}, 0, fmt.Errorf("load lazy content %q: %w", pageURL, err)
+		return ReaderPage{}, fmt.Errorf("load lazy content %q: %w", pageURL, err)
 	}
 
 	finalHTML, err := session.Content()
 	if err != nil {
-		return ReaderPage{}, 0, fmt.Errorf("read activated reader html %q: %w", pageURL, err)
+		return ReaderPage{}, fmt.Errorf("read activated reader html %q: %w", pageURL, err)
 	}
 	activatedPage, err := ParseReaderPage(summaryURL, pageURL, finalHTML)
 	if err != nil {
-		return ReaderPage{}, 0, err
+		return ReaderPage{}, err
 	}
-	return activatedPage, activationClicks, nil
+	log.Printf("zeri reader activated parse: url=%s title=%q imageURLs=%d filtered=%d", pageURL, activatedPage.Title, len(activatedPage.ImageURLs), len(activatedPage.FilteredImageURLs))
+	return activatedPage, nil
 }
 
 func computeDownloadWeight(targetCount int) float64 {

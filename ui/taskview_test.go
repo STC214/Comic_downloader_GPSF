@@ -28,6 +28,7 @@ func TestLoadTaskViewReadsReport(t *testing.T) {
 		Verification:  "committed",
 		OutputRoot:    "downloads/task-1",
 		ThumbnailRoot: "thumbnails/task-1",
+		ThumbnailPath: "thumbnails/task-1/thumb.jpg",
 		StatePath:     "state.json",
 		ReportPath:    "report.json",
 		LogPath:       "task.log",
@@ -58,6 +59,18 @@ func TestLoadTaskViewReadsReport(t *testing.T) {
 	}
 	if view.AssetCount != 3 {
 		t.Fatalf("AssetCount = %d", view.AssetCount)
+	}
+	if view.OutputRoot != filepath.Clean("downloads/task-1") {
+		t.Fatalf("OutputRoot = %q", view.OutputRoot)
+	}
+	if view.ThumbnailRoot != filepath.Clean("thumbnails/task-1") {
+		t.Fatalf("ThumbnailRoot = %q", view.ThumbnailRoot)
+	}
+	if view.ThumbnailPath != filepath.Clean("thumbnails/task-1/thumb.jpg") {
+		t.Fatalf("ThumbnailPath = %q", view.ThumbnailPath)
+	}
+	if view.ReportPath != filepath.Clean("report.json") {
+		t.Fatalf("ReportPath = %q", view.ReportPath)
 	}
 }
 

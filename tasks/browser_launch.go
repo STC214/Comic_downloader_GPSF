@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"comic_downloader_go_playwright_stealth/browser"
@@ -12,6 +13,8 @@ import (
 )
 
 const defaultFirefoxUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0"
+
+var urlSchemePattern = regexp.MustCompile(`(?i)https?://`)
 
 // BrowserLaunchRequest is the task-level browser input that flows into the middleware.
 type BrowserLaunchRequest struct {
@@ -41,6 +44,22 @@ type BrowserLaunchRequest struct {
 	Progress             func(zeri.DownloadProgress) `json:"-"`
 }
 
+// LockScope returns a session-lock scope for task-scoped browser sessions.
+func (r BrowserLaunchRequest) LockScope() string {
+	r = r.Normalize()
+	if !r.UsesTaskProfile() {
+		return ""
+	}
+	parts := []string{r.BrowserType}
+	if strings.TrimSpace(r.WorkerID) != "" {
+		parts = append(parts, r.WorkerID)
+	}
+	if strings.TrimSpace(r.TaskID) != "" {
+		parts = append(parts, r.TaskID)
+	}
+	return strings.Join(parts, "/")
+}
+
 // Normalize returns a cleaned request with defaults applied.
 func (r BrowserLaunchRequest) Normalize() BrowserLaunchRequest {
 	if strings.TrimSpace(r.RuntimeRoot) == "" {
@@ -49,7 +68,7 @@ func (r BrowserLaunchRequest) Normalize() BrowserLaunchRequest {
 	if r.LaunchTimeoutMS <= 0 {
 		r.LaunchTimeoutMS = 120000
 	}
-	r.URL = strings.TrimSpace(r.URL)
+	r.URL = NormalizeTaskURL(r.URL)
 	r.BrowserType = normalizeBrowserType(r.BrowserType)
 	if zeri.IsZeriURL(r.URL) {
 		r.BrowserType = string(projectruntime.BrowserTypeFirefox)
@@ -57,6 +76,12 @@ func (r BrowserLaunchRequest) Normalize() BrowserLaunchRequest {
 	r.BrowserInstallDir = strings.TrimSpace(r.BrowserInstallDir)
 	if r.BrowserInstallDir == "" && r.BrowserType == string(projectruntime.BrowserTypeChromium) {
 		r.BrowserInstallDir = strings.TrimSpace(os.Getenv("PLAYWRIGHT_BROWSERS_PATH"))
+	}
+	frontendState, hasFrontendState := loadFrontendStateDefaults(r.RuntimeRoot)
+	if strings.TrimSpace(r.DriverDir) == "" {
+		if hasFrontendState && strings.TrimSpace(frontendState.PlaywrightDriverDir) != "" {
+			r.DriverDir = filepath.Clean(frontendState.PlaywrightDriverDir)
+		}
 	}
 	if strings.TrimSpace(r.DriverDir) == "" {
 		if r.BrowserType == string(projectruntime.BrowserTypeChromium) && strings.TrimSpace(r.BrowserInstallDir) != "" {
@@ -74,8 +99,34 @@ func (r BrowserLaunchRequest) Normalize() BrowserLaunchRequest {
 		r.UserAgent = defaultUserAgentForBrowserType(r.BrowserType)
 	}
 	if strings.TrimSpace(r.BrowserPath) == "" {
+		if hasFrontendState {
+			switch projectruntime.BrowserType(r.BrowserType) {
+			case projectruntime.BrowserTypeChromium:
+				if strings.TrimSpace(frontendState.ChromiumExecutablePath) != "" {
+					r.BrowserPath = filepath.Clean(frontendState.ChromiumExecutablePath)
+				}
+			default:
+				if strings.TrimSpace(frontendState.FirefoxExecutablePath) != "" {
+					r.BrowserPath = filepath.Clean(frontendState.FirefoxExecutablePath)
+				}
+			}
+		}
+	}
+	if strings.TrimSpace(r.BrowserPath) == "" {
 		if r.BrowserType != string(projectruntime.BrowserTypeChromium) {
 			r.BrowserPath = defaultExecutablePathForBrowserType(r.RuntimeRoot, r.BrowserType)
+		}
+	}
+	if strings.TrimSpace(r.BrowserInstallDir) == "" && hasFrontendState {
+		switch projectruntime.BrowserType(r.BrowserType) {
+		case projectruntime.BrowserTypeChromium:
+			if strings.TrimSpace(frontendState.ChromiumInstallRoot) != "" {
+				r.BrowserInstallDir = filepath.Clean(frontendState.ChromiumInstallRoot)
+			}
+		default:
+			if strings.TrimSpace(frontendState.FirefoxInstallRoot) != "" {
+				r.BrowserInstallDir = filepath.Clean(frontendState.FirefoxInstallRoot)
+			}
 		}
 	}
 	if selectedProfileDir != "" {
@@ -90,16 +141,29 @@ func (r BrowserLaunchRequest) Normalize() BrowserLaunchRequest {
 	} else {
 		r.UserDataDir = r.ProfileDir
 	}
-	if trimmed := strings.TrimSpace(r.DownloadRoot); trimmed != "" {
-		r.DownloadRoot = filepath.Clean(trimmed)
-	} else {
-		r.DownloadRoot = ""
-	}
-	if trimmed := strings.TrimSpace(r.OutputDir); trimmed != "" {
-		r.OutputDir = filepath.Clean(trimmed)
-	} else {
-		r.OutputDir = ""
-	}
+	safeDefaultOutput := filepath.Join(r.RuntimeRoot, "output")
+	r.DownloadRoot = normalizeOutputRoot(
+		r.DownloadRoot,
+		func() string {
+			if hasFrontendState {
+				return frontendState.DownloadDir
+			}
+			return ""
+		}(),
+		os.Getenv("COMIC_DOWNLOADER_DOWNLOAD_DIR"),
+		safeDefaultOutput,
+	)
+	r.OutputDir = normalizeOutputRoot(
+		r.OutputDir,
+		func() string {
+			if hasFrontendState {
+				return frontendState.DownloadDir
+			}
+			return ""
+		}(),
+		os.Getenv("COMIC_DOWNLOADER_DOWNLOAD_DIR"),
+		safeDefaultOutput,
+	)
 	if trimmed := strings.TrimSpace(r.FirefoxUserPrefsJSON); trimmed != "" {
 		var prefs map[string]any
 		if err := json.Unmarshal([]byte(trimmed), &prefs); err == nil {
@@ -109,6 +173,68 @@ func (r BrowserLaunchRequest) Normalize() BrowserLaunchRequest {
 	r.Locale = strings.TrimSpace(r.Locale)
 	r.TimezoneID = strings.TrimSpace(r.TimezoneID)
 	return r
+}
+
+// NormalizeTaskURL trims the raw URL and collapses concatenated repeated URL prefixes
+// by keeping the last scheme occurrence when multiple http(s):// markers are present.
+func NormalizeTaskURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	matches := urlSchemePattern.FindAllStringIndex(raw, -1)
+	if len(matches) <= 1 {
+		return raw
+	}
+	last := matches[len(matches)-1][0]
+	if last < 0 || last >= len(raw) {
+		return raw
+	}
+	candidate := strings.TrimSpace(raw[last:])
+	if candidate == "" {
+		return raw
+	}
+	return candidate
+}
+
+func normalizeOutputRoot(primary, frontendDefault, envDefault, safeDefault string) string {
+	for _, candidate := range []string{primary, frontendDefault, envDefault, safeDefault} {
+		if cleaned, ok := normalizeTaskPathCandidate(candidate); ok {
+			return cleaned
+		}
+	}
+	return filepath.Clean(strings.TrimSpace(safeDefault))
+}
+
+func normalizeTaskPathCandidate(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
+	cleaned := filepath.Clean(raw)
+	if !isLikelyValidWindowsPath(cleaned) {
+		return "", false
+	}
+	return cleaned, true
+}
+
+func isLikelyValidWindowsPath(path string) bool {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return false
+	}
+	if strings.ContainsAny(path, "<>\"|?*") {
+		return false
+	}
+	for _, r := range path {
+		if r < 32 {
+			return false
+		}
+	}
+	if idx := strings.IndexByte(path, ':'); idx >= 0 && idx != 1 {
+		return false
+	}
+	return true
 }
 
 // UsesTaskProfile reports whether the request should clone the current mother profile into a task temp directory.
@@ -136,6 +262,8 @@ func (r BrowserLaunchRequest) BrowserOptions() browser.BrowserSessionOptions {
 		URL:               r.URL,
 		Headless:          browser.HeadlessPtr(r.Headless),
 		LaunchTimeoutMS:   r.LaunchTimeoutMS,
+		LockScope:         r.LockScope(),
+		AdblockRulesPath:  adblockRulesPathForRuntime(r.RuntimeRoot, r.Adblock),
 		DriverDir:         r.DriverDir,
 		ProfileDir:        r.ProfileDir,
 		BrowserInstallDir: r.BrowserInstallDir,
@@ -146,6 +274,17 @@ func (r BrowserLaunchRequest) BrowserOptions() browser.BrowserSessionOptions {
 		ViewportHeight:    r.ViewportHeight,
 		FirefoxUserPrefs:  r.FirefoxUserPrefs,
 	}
+}
+
+func adblockRulesPathForRuntime(runtimeRoot string, enabled bool) string {
+	if !enabled {
+		return ""
+	}
+	runtimeRoot = strings.TrimSpace(runtimeRoot)
+	if runtimeRoot == "" {
+		runtimeRoot = "runtime"
+	}
+	return filepath.Join(runtimeRoot, "adblock", "AWAvenue-Ads-Rule.txt")
 }
 
 // FirefoxMiddleware builds the browser middleware from the task-level request.
@@ -225,7 +364,7 @@ func defaultExecutablePathForBrowserType(runtimeRoot, browserType string) string
 func defaultUserAgentForBrowserType(browserType string) string {
 	switch browserType {
 	case string(projectruntime.BrowserTypeChromium):
-		return "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Chrome/149.0"
+		return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
 	default:
 		return defaultFirefoxUserAgent
 	}
@@ -237,4 +376,17 @@ func workspaceRootFromRuntimeRoot(runtimeRoot string) string {
 		return "."
 	}
 	return filepath.Dir(runtimeRoot)
+}
+
+func loadFrontendStateDefaults(runtimeRoot string) (projectruntime.FrontendState, bool) {
+	workspaceRoot := workspaceRootFromRuntimeRoot(runtimeRoot)
+	statePath := projectruntime.ResolveFrontendStatePath(workspaceRoot)
+	state, err := projectruntime.LoadFrontendState(statePath)
+	if err != nil {
+		return projectruntime.FrontendState{}, false
+	}
+	if strings.TrimSpace(state.DownloadDir) != "" {
+		state.DownloadDir = projectruntime.ResolvePath(workspaceRoot, state.DownloadDir)
+	}
+	return state, true
 }

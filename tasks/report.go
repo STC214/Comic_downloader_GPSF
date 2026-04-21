@@ -39,6 +39,7 @@ type TaskReport struct {
 	Note               string                       `json:"note,omitempty"`
 	OutputRoot         string                       `json:"outputRoot"`
 	ThumbnailRoot      string                       `json:"thumbnailRoot"`
+	ThumbnailPath      string                       `json:"thumbnailPath,omitempty"`
 	StatePath          string                       `json:"statePath"`
 	ReportPath         string                       `json:"reportPath"`
 	LogPath            string                       `json:"logPath"`

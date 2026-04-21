@@ -1,13 +1,13 @@
-//go:build windows
-
 package main
 
 import (
 	"fmt"
 	"net/url"
-	"sort"
+	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
+	"unicode/utf16"
 	"unsafe"
 
 	"comic_downloader_go_playwright_stealth/ui"
@@ -42,10 +42,10 @@ func taskBoardRefresh(hwnd HWND) {
 	if app == nil {
 		return
 	}
-	items := app.todo.Items()
+	itemCount := app.todo.Count()
 	contentHeight := 0
-	if len(items) > 0 {
-		contentHeight = taskCardTopMargin + len(items)*(taskCardHeight+taskCardGap)
+	if itemCount > 0 {
+		contentHeight = taskCardTopMargin + itemCount*(taskCardHeight+taskCardGap)
 	}
 	visibleHeight := taskBoardVisibleHeight(hwnd)
 	app.mu.Lock()
@@ -77,54 +77,204 @@ func taskBoardWindowProc(hwnd HWND, msg uint32, wParam, lParam uintptr) uintptr 
 	case WM_CREATE:
 		taskBoardRefresh(hwnd)
 		return 0
-	case WM_VSCROLL:
-		if app == nil {
-			return 0
-		}
-		code := int(wParam & 0xFFFF)
-		app.mu.Lock()
-		scrollY := app.taskScrollY
-		maxScroll := app.taskContentH - taskBoardVisibleHeight(hwnd)
-		if maxScroll < 0 {
-			maxScroll = 0
-		}
-		page := taskBoardVisibleHeight(hwnd) / 2
-		if page < 40 {
-			page = 40
-		}
-		switch code {
-		case SB_LINEUP:
-			scrollY -= 32
-		case SB_LINEDOWN:
-			scrollY += 32
-		case SB_PAGEUP:
-			scrollY -= page
-		case SB_PAGEDOWN:
-			scrollY += page
-		case SB_THUMBPOSITION, SB_THUMBTRACK:
-			scrollY = int(int32(lParam))
-		case SB_TOP:
-			scrollY = 0
-		case SB_BOTTOM:
-			scrollY = maxScroll
-		}
-		if scrollY < 0 {
-			scrollY = 0
-		}
-		if scrollY > maxScroll {
-			scrollY = maxScroll
-		}
-		app.taskScrollY = scrollY
-		app.mu.Unlock()
-		procSetScrollPos.Call(uintptr(hwnd), 1, uintptr(scrollY), 1)
-		procInvalidateRect.Call(uintptr(hwnd), 0, 1)
+	case WM_SIZE:
+		taskBoardRefresh(hwnd)
 		return 0
+	case WM_LBUTTONDOWN:
+		taskBoardLeftClick(hwnd, lParam)
+		return 0
+	case WM_RBUTTONUP:
+		taskBoardRightClick(hwnd, lParam)
+		return 0
+	case WM_CONTEXTMENU:
+		taskBoardContextMenu(hwnd, lParam)
+		return 0
+	case WM_MOUSEWHEEL:
+		return taskBoardMouseWheel(hwnd, wParam)
+	case WM_VSCROLL:
+		return taskBoardVScroll(hwnd, wParam)
 	case WM_PAINT:
 		taskBoardPaint(hwnd)
 		return 0
 	}
 	r, _, _ := procDefWindowProcW.Call(uintptr(hwnd), uintptr(msg), wParam, lParam)
 	return r
+}
+
+func taskBoardLeftClick(hwnd HWND, lParam uintptr) {
+	if app == nil {
+		return
+	}
+	x := int(int16(lParam & 0xFFFF))
+	y := int(int16((lParam >> 16) & 0xFFFF))
+	item, _, ok := taskBoardItemAtPoint(hwnd, x, y)
+	ctrlPressed := isControlKeyPressed()
+	if !ok {
+		if !ctrlPressed {
+			app.clearTaskSelection()
+		}
+		return
+	}
+	if ctrlPressed {
+		app.toggleTaskSelection(item.ID)
+		return
+	}
+	app.selectSingleTask(item.ID)
+}
+
+func taskBoardRightClick(hwnd HWND, lParam uintptr) {
+	if app == nil {
+		return
+	}
+	x := int(int16(lParam & 0xFFFF))
+	y := int(int16((lParam >> 16) & 0xFFFF))
+	item, _, ok := taskBoardItemAtPoint(hwnd, x, y)
+	if ok && !app.taskSelected(item.ID) {
+		app.selectSingleTask(item.ID)
+	}
+	if itemIDs := app.taskIDsFromSelection(); len(itemIDs) == 0 {
+		return
+	}
+	var pt POINT
+	if r, _, _ := procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt))); r == 0 {
+		pt.X = int32(x)
+		pt.Y = int32(y)
+	}
+	app.showTaskContextMenu(hwnd, int(pt.X), int(pt.Y))
+}
+
+func taskBoardContextMenu(hwnd HWND, lParam uintptr) {
+	if app == nil {
+		return
+	}
+	if ids := app.taskIDsFromSelection(); len(ids) == 0 {
+		return
+	}
+	var pt POINT
+	if lParam != ^uintptr(0) {
+		pt.X = int32(int32(lParam & 0xFFFF))
+		pt.Y = int32(int32((lParam >> 16) & 0xFFFF))
+	} else if r, _, _ := procGetCursorPos.Call(uintptr(unsafe.Pointer(&pt))); r == 0 {
+		return
+	}
+	app.showTaskContextMenu(hwnd, int(pt.X), int(pt.Y))
+}
+
+func taskBoardItemAtPoint(hwnd HWND, x, y int) (ui.TodoItem, int, bool) {
+	if app == nil {
+		return ui.TodoItem{}, -1, false
+	}
+	var rc RECT
+	if r, _, _ := procGetClientRect.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&rc))); r == 0 {
+		return ui.TodoItem{}, -1, false
+	}
+	scrollY := app.taskScrollSnapshot()
+	rowHeight := taskCardHeight + taskCardGap
+	if rowHeight <= 0 {
+		rowHeight = 1
+	}
+	absoluteY := y + scrollY
+	if absoluteY < taskCardTopMargin {
+		return ui.TodoItem{}, -1, false
+	}
+	index := (absoluteY - taskCardTopMargin) / rowHeight
+	if index < 0 || index >= app.todo.Count() {
+		return ui.TodoItem{}, -1, false
+	}
+	top := taskCardTopMargin + index*rowHeight - scrollY
+	if y < top || y > top+taskCardHeight {
+		return ui.TodoItem{}, -1, false
+	}
+	items := app.todo.ItemsRange(index, index+1)
+	if len(items) == 0 {
+		return ui.TodoItem{}, -1, false
+	}
+	return items[0], index, true
+}
+
+func isControlKeyPressed() bool {
+	r, _, _ := procGetKeyState.Call(uintptr(VK_CONTROL))
+	return r&0x8000 != 0
+}
+
+func taskBoardMouseWheel(hwnd HWND, wParam uintptr) uintptr {
+	if app == nil {
+		return 0
+	}
+	delta := int(int16((wParam >> 16) & 0xFFFF))
+	if delta == 0 {
+		return 0
+	}
+	lines := delta / 120
+	if lines == 0 {
+		if delta > 0 {
+			lines = 1
+		} else {
+			lines = -1
+		}
+	}
+	app.mu.Lock()
+	scrollY := app.taskScrollY - lines*48
+	maxScroll := app.taskContentH - taskBoardVisibleHeight(hwnd)
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if scrollY < 0 {
+		scrollY = 0
+	}
+	if scrollY > maxScroll {
+		scrollY = maxScroll
+	}
+	app.taskScrollY = scrollY
+	app.mu.Unlock()
+	procSetScrollPos.Call(uintptr(hwnd), 1, uintptr(scrollY), 1)
+	procInvalidateRect.Call(uintptr(hwnd), 0, 1)
+	return 0
+}
+
+func taskBoardVScroll(hwnd HWND, wParam uintptr) uintptr {
+	if app == nil {
+		return 0
+	}
+	code := int(wParam & 0xFFFF)
+	thumbPos := int((wParam >> 16) & 0xFFFF)
+	app.mu.Lock()
+	scrollY := app.taskScrollY
+	maxScroll := app.taskContentH - taskBoardVisibleHeight(hwnd)
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	page := taskBoardVisibleHeight(hwnd) / 2
+	if page < 40 {
+		page = 40
+	}
+	switch code {
+	case SB_LINEUP:
+		scrollY -= 32
+	case SB_LINEDOWN:
+		scrollY += 32
+	case SB_PAGEUP:
+		scrollY -= page
+	case SB_PAGEDOWN:
+		scrollY += page
+	case SB_THUMBPOSITION, SB_THUMBTRACK:
+		scrollY = thumbPos
+	case SB_TOP:
+		scrollY = 0
+	case SB_BOTTOM:
+		scrollY = maxScroll
+	}
+	if scrollY < 0 {
+		scrollY = 0
+	}
+	if scrollY > maxScroll {
+		scrollY = maxScroll
+	}
+	app.taskScrollY = scrollY
+	app.mu.Unlock()
+	procSetScrollPos.Call(uintptr(hwnd), 1, uintptr(scrollY), 1)
+	procInvalidateRect.Call(uintptr(hwnd), 0, 1)
+	return 0
 }
 
 func taskBoardPaint(hwnd HWND) {
@@ -153,6 +303,10 @@ func taskBoardPaint(hwnd HWND) {
 	defer procDeleteObject.Call(brushDone)
 	brushFail, _, _ := procCreateSolidBrush.Call(uintptr(rgb(182, 82, 82)))
 	defer procDeleteObject.Call(brushFail)
+	brushSelected, _, _ := procCreateSolidBrush.Call(uintptr(rgb(54, 84, 66)))
+	defer procDeleteObject.Call(brushSelected)
+	brushSelectedBorder, _, _ := procCreateSolidBrush.Call(uintptr(rgb(128, 200, 138)))
+	defer procDeleteObject.Call(brushSelectedBorder)
 
 	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&ps.RcPaint)), brushBg)
 	procSetBkMode.Call(hdc, 1)
@@ -162,24 +316,42 @@ func taskBoardPaint(hwnd HWND) {
 		return
 	}
 	width := int(rc.Right - rc.Left)
+	visibleHeight := int(rc.Bottom - rc.Top)
 	scrollY := app.taskScrollSnapshot()
 
-	items := app.todo.Items()
-	sort.SliceStable(items, func(i, j int) bool {
-		return items[i].CreatedAt.Before(items[j].CreatedAt)
-	})
-
+	itemCount := app.todo.Count()
+	if itemCount == 0 {
+		return
+	}
+	rowHeight := taskCardHeight + taskCardGap
+	if rowHeight <= 0 {
+		rowHeight = 1
+	}
+	first := (scrollY - taskCardTopMargin) / rowHeight
+	if first < 0 {
+		first = 0
+	}
+	last := (scrollY + visibleHeight - taskCardTopMargin) / rowHeight
+	if last < first {
+		last = first
+	}
+	last += 2
+	if last > itemCount {
+		last = itemCount
+	}
+	items := app.todo.ItemsRange(first, last)
 	for idx, item := range items {
-		top := taskCardTopMargin + idx*(taskCardHeight+taskCardGap) - scrollY
+		absoluteIdx := first + idx
+		top := taskCardTopMargin + absoluteIdx*rowHeight - scrollY
 		bottom := top + taskCardHeight
-		if bottom < 0 || top > int(rc.Bottom) {
+		if bottom < 0 || top > visibleHeight {
 			continue
 		}
-		drawTaskCard(HDC(hdc), width, top, item, brushCard, brushThumb, brushBorder, brushBarBg, brushPending, brushWait, brushDone, brushFail)
+		drawTaskCard(HDC(hdc), width, top, item, resolveTaskCardThumbnailPath(item), app.taskSelected(item.ID), brushCard, brushThumb, brushBorder, brushBarBg, brushPending, brushWait, brushDone, brushFail, brushSelected, brushSelectedBorder)
 	}
 }
 
-func drawTaskCard(hdc HDC, width, top int, item ui.TodoItem, brushCard, brushThumb, brushBorder, brushBarBg, brushPending, brushWait, brushDone, brushFail uintptr) {
+func drawTaskCard(hdc HDC, width, top int, item ui.TodoItem, thumbnailPath string, selected bool, brushCard, brushThumb, brushBorder, brushBarBg, brushPending, brushWait, brushDone, brushFail, brushSelected, brushSelectedBorder uintptr) {
 	cardLeft := 10
 	cardTop := top
 	cardWidth := width - 20
@@ -188,38 +360,63 @@ func drawTaskCard(hdc HDC, width, top int, item ui.TodoItem, brushCard, brushThu
 		cardWidth = 100
 	}
 	cardRect := RECT{Left: int32(cardLeft), Top: int32(cardTop), Right: int32(cardLeft + cardWidth), Bottom: int32(cardTop + cardHeight)}
+	if clipRegion, _, _ := procCreateRoundRectRgn.Call(
+		uintptr(cardRect.Left+1),
+		uintptr(cardRect.Top+1),
+		uintptr(cardRect.Right-1),
+		uintptr(cardRect.Bottom-1),
+		uintptr(18),
+		uintptr(18),
+	); clipRegion != 0 {
+		defer procDeleteObject.Call(clipRegion)
+		procSelectClipRgn.Call(uintptr(hdc), clipRegion)
+		defer procSelectClipRgn.Call(uintptr(hdc), 0)
+	}
 	procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&cardRect)), brushCard)
+	if selected {
+		selRect := RECT{Left: cardRect.Left + 1, Top: cardRect.Top + 1, Right: cardRect.Right - 1, Bottom: cardRect.Bottom - 1}
+		procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&selRect)), brushSelected)
+		leftBar := RECT{Left: cardRect.Left + 1, Top: cardRect.Top + 1, Right: cardRect.Left + 6, Bottom: cardRect.Bottom - 1}
+		procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&leftBar)), brushSelectedBorder)
+	}
 
 	borderRect := RECT{Left: int32(cardLeft), Top: int32(cardTop), Right: int32(cardLeft + cardWidth), Bottom: int32(cardTop + 4)}
 	procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&borderRect)), brushBorder)
 
-	thumbRect := RECT{Left: int32(cardLeft + 8), Top: int32(cardTop + 10), Right: int32(cardLeft + 92), Bottom: int32(cardTop + 94)}
-	procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&thumbRect)), brushThumb)
+	thumbRect := RECT{Left: int32(cardLeft + 10), Top: int32(cardTop + 12), Right: int32(cardLeft + 82), Bottom: int32(cardTop + 116)}
+	drawTaskThumbnail(hdc, thumbRect, thumbnailPath, HBRUSH(brushThumb))
 
-	title := item.Request.URL
+	contentRect := RECT{Left: int32(cardLeft + 90), Top: int32(cardTop + 12), Right: int32(cardLeft + cardWidth - 12), Bottom: int32(cardTop + cardHeight - 12)}
+	contentFill, _, _ := procCreateSolidBrush.Call(uintptr(rgb(24, 30, 38)))
+	if contentFill != 0 {
+		procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&contentRect)), contentFill)
+		procDeleteObject.Call(contentFill)
+	}
+	sepRect := RECT{Left: int32(cardLeft + 86), Top: int32(cardTop + 12), Right: int32(cardLeft + 88), Bottom: int32(cardTop + cardHeight - 12)}
+	procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&sepRect)), brushBarBg)
+
+	title := strings.TrimSpace(item.Result.Title)
+	if title == "" {
+		title = strings.TrimSpace(item.Request.URL)
+	}
 	if title == "" {
 		title = item.ID
 	}
-	if u, err := url.Parse(item.Request.URL); err == nil && u.Host != "" {
-		title = fmt.Sprintf("%s [%s]", hostTitle(item.Request.URL), item.Status)
-	}
+	title = trimTextRunes(title, 56)
 	sub := fmt.Sprintf("%s | %s", item.ID, strings.ToLower(string(item.Status)))
 	siteLine := item.Request.URL
-	if u, err := url.Parse(item.Request.URL); err == nil {
-		if u.Host != "" {
-			siteLine = u.Host
-		}
+	if u, err := url.Parse(item.Request.URL); err == nil && u.Host != "" {
+		siteLine = u.Host
 	}
-	if item.Request.Headless {
-		title += " [headless]"
-	}
+	siteLine = trimTextRunes(siteLine, 64)
 
-	drawTextLineWithFont(hdc, titleFont, cardLeft+104, cardTop+10, title, rgb(244, 247, 250))
-	drawTextLineWithFont(hdc, uiFont, cardLeft+104, cardTop+36, siteLine, rgb(184, 196, 208))
-	drawTextLineWithFont(hdc, uiFont, cardLeft+104, cardTop+56, sub, rgb(156, 168, 182))
+	titleX := cardLeft + 96
+	titleRight := cardLeft + cardWidth - 14
+	drawTextLineWithFont(hdc, titleFont, titleX, cardTop+12, title, rgb(244, 247, 250))
+	drawTextLineWithFont(hdc, uiFont, titleX, cardTop+36, siteLine, rgb(184, 196, 208))
 
-	barY := cardTop + 76
-	barRectBg := RECT{Left: int32(cardLeft + 104), Top: int32(barY), Right: int32(cardLeft + cardWidth - 14), Bottom: int32(barY + 22)}
+	barY := cardTop + 58
+	barRectBg := RECT{Left: int32(titleX), Top: int32(barY), Right: int32(titleRight), Bottom: int32(barY + 22)}
 	procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&barRectBg)), brushBarBg)
 	barRectFill := barRectBg
 	progress := taskProgress(item)
@@ -238,11 +435,37 @@ func drawTaskCard(hdc HDC, width, top int, item ui.TodoItem, brushCard, brushThu
 		procFillRect.Call(uintptr(hdc), uintptr(unsafe.Pointer(&barRectFill)), brushPending)
 	}
 	percent := fmt.Sprintf("%d%%", int(progress*100))
-	drawTextLineWithFont(hdc, uiFont, cardLeft+104+(cardWidth-120)/2, cardTop+78, percent, rgb(252, 252, 252))
+	drawTextLineWithFont(hdc, uiFont, cardLeft+96+(cardWidth-112)/2, cardTop+62, percent, rgb(252, 252, 252))
 	statusText := taskProgressLabel(item)
 	if statusText != "" {
-		drawTextLineWithFont(hdc, uiFont, cardLeft+104, cardTop+96, statusText, rgb(184, 196, 208))
+		drawTextLineWithFont(hdc, uiFont, titleX, cardTop+86, sub, rgb(156, 168, 182))
+		drawTextLineWithFont(hdc, uiFont, titleX, cardTop+106, statusText, rgb(184, 196, 208))
+	} else {
+		drawTextLineWithFont(hdc, uiFont, titleX, cardTop+86, sub, rgb(156, 168, 182))
 	}
+}
+
+func resolveTaskCardThumbnailPath(item ui.TodoItem) string {
+	if path := strings.TrimSpace(item.Result.ThumbnailPath); path != "" {
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	if app == nil {
+		return strings.TrimSpace(item.Result.ThumbnailPath)
+	}
+	current := app.paths.TaskThumbnailPath(item.ID)
+	if _, err := os.Stat(current); err == nil {
+		return current
+	}
+	legacy := filepath.Join(app.paths.Root, "runtime", "thumbnails", "task-"+item.ID, "thumb.jpg")
+	if _, err := os.Stat(legacy); err == nil {
+		return legacy
+	}
+	if path := strings.TrimSpace(item.Result.ThumbnailPath); path != "" {
+		return path
+	}
+	return current
 }
 
 func taskProgress(item ui.TodoItem) float64 {
@@ -274,7 +497,7 @@ func clamp01(v float64) float64 {
 func taskProgressLabel(item ui.TodoItem) string {
 	switch {
 	case item.Status == ui.TodoStatusFailed:
-		return "错"
+		return "失败"
 	case item.Status == ui.TodoStatusCompleted && item.Result.DownloadedCount > 0:
 		return fmt.Sprintf("%d张", item.Result.DownloadedCount)
 	case item.StepTotal > 0 && item.StepCurrent > 0:
@@ -290,41 +513,39 @@ func taskProgressLabel(item ui.TodoItem) string {
 		return ""
 	}
 }
-
 func taskPhaseShort(phase string) string {
 	switch strings.TrimSpace(strings.ToLower(phase)) {
 	case "pending":
-		return "待"
+		return "等待"
 	case "running":
-		return "跑"
+		return "运行"
 	case "completed":
-		return "完"
+		return "完成"
 	case "failed":
-		return "错"
-	case "启动":
-		return "启"
-	case "解析":
-		return "解"
-	case "下载中":
-		return "下"
-	case "完成":
-		return "完"
-	case "准备":
-		return "备"
-	case "激活":
-		return "激"
+		return "失败"
+	case "start":
+		return "启动"
+	case "parse":
+		return "解析"
+	case "downloading":
+		return "下载中"
+	case "done":
+		return "完成"
+	case "prep":
+		return "准备"
+	case "active":
+		return "激活"
 	default:
 		return phase
 	}
 }
-
 func drawTextLine(hdc HDC, x, y int, text string, color uint32) {
 	if text == "" {
 		return
 	}
 	textPtr, _ := utf16Ptr(text)
 	procSetTextColor.Call(uintptr(hdc), uintptr(color))
-	procTextOutW.Call(uintptr(hdc), uintptr(x), uintptr(y), uintptr(unsafe.Pointer(textPtr)), uintptr(len(text)))
+	procTextOutW.Call(uintptr(hdc), uintptr(x), uintptr(y), uintptr(unsafe.Pointer(textPtr)), uintptr(utf16Len(text)))
 }
 
 func drawTextLineWithFont(hdc HDC, font HGDIOBJ, x, y int, text string, color uint32) {
@@ -335,7 +556,7 @@ func drawTextLineWithFont(hdc HDC, font HGDIOBJ, x, y int, text string, color ui
 	oldFont, _, _ := procSelectObject.Call(uintptr(hdc), uintptr(font))
 	defer procSelectObject.Call(uintptr(hdc), oldFont)
 	procSetTextColor.Call(uintptr(hdc), uintptr(color))
-	procTextOutW.Call(uintptr(hdc), uintptr(x), uintptr(y), uintptr(unsafe.Pointer(textPtr)), uintptr(len(text)))
+	procTextOutW.Call(uintptr(hdc), uintptr(x), uintptr(y), uintptr(unsafe.Pointer(textPtr)), uintptr(utf16Len(text)))
 }
 
 func hostTitle(raw string) string {
@@ -347,6 +568,21 @@ func hostTitle(raw string) string {
 		return raw
 	}
 	return u.Host
+}
+
+func trimTextRunes(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	if text == "" || limit <= 0 {
+		return text
+	}
+	runes := []rune(text)
+	if len(runes) <= limit {
+		return text
+	}
+	if limit <= 1 {
+		return string(runes[:limit])
+	}
+	return string(runes[:limit-1]) + "…"
 }
 
 func taskBoardSnapshotScrollY() int {
@@ -368,8 +604,15 @@ func rgb(r, g, b uint8) uint32 {
 	return uint32(r) | uint32(g)<<8 | uint32(b)<<16
 }
 
+func utf16Len(text string) int {
+	if text == "" {
+		return 0
+	}
+	return len(utf16.Encode([]rune(text)))
+}
+
 const (
 	taskCardTopMargin = 10
-	taskCardHeight    = 108
+	taskCardHeight    = 132
 	taskCardGap       = 10
 )

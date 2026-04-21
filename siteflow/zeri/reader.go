@@ -3,35 +3,36 @@ package zeri
 import (
 	"fmt"
 	"html"
+	"log"
 	"regexp"
 	"sort"
 	"strings"
 )
 
 var (
-	readerTitleRe = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
+	readerTitleRe     = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 	readerPageCountRe = regexp.MustCompile(`(?is)Length\s*:\s*(\d+)\s*pages`)
-	readerZoom100Re = regexp.MustCompile(`(?is)(?:^|[^0-9])100%(?:[^0-9]|$)`)
-	readerBlockRe = regexp.MustCompile(`(?is)<[^>]*id=["']([^"']+)["'][^>]*>(.*?)</[^>]+>`)
-	readerHrefRe = regexp.MustCompile(`(?is)href\s*=\s*["']([^"']+)["']`)
-	readerImgSrcRe = regexp.MustCompile(`(?is)<img[^>]*src\s*=\s*["']([^"']+)["'][^>]*>`)
-	readerDataSrcRe = regexp.MustCompile(`(?is)<img[^>]*(?:data-src|data-original)\s*=\s*["']([^"']+)["'][^>]*>`)
+	readerZoom100Re   = regexp.MustCompile(`(?is)(?:^|[^0-9])100%(?:[^0-9]|$)`)
+	readerBlockRe     = regexp.MustCompile(`(?is)<[^>]*id=["']([^"']+)["'][^>]*>(.*?)</[^>]+>`)
+	readerHrefRe      = regexp.MustCompile(`(?is)href\s*=\s*["']([^"']+)["']`)
+	readerImgSrcRe    = regexp.MustCompile(`(?is)<img[^>]*src\s*=\s*["']([^"']+)["'][^>]*>`)
+	readerDataSrcRe   = regexp.MustCompile(`(?is)<img[^>]*(?:data-src|data-original)\s*=\s*["']([^"']+)["'][^>]*>`)
 )
 
 // ReaderPage describes the important reader-page fields for Zeri.
 type ReaderPage struct {
-	BaseURL          string   `json:"baseURL"`
-	URL              string   `json:"url"`
-	Title            string   `json:"title"`
-	PageCount        int      `json:"pageCount"`
-	LengthText       string   `json:"lengthText"`
-	HasZoom100       bool     `json:"hasZoom100"`
-	Zoom100Clicks    int      `json:"zoom100Clicks,omitempty"`
-	ReaderURLs       []string `json:"readerURLs,omitempty"`
-	PaginationURLs   []string `json:"paginationURLs,omitempty"`
-	ImageURLs        []string `json:"imageURLs,omitempty"`
+	BaseURL           string   `json:"baseURL"`
+	URL               string   `json:"url"`
+	Title             string   `json:"title"`
+	PageCount         int      `json:"pageCount"`
+	LengthText        string   `json:"lengthText"`
+	HasZoom100        bool     `json:"hasZoom100"`
+	Zoom100Clicks     int      `json:"zoom100Clicks,omitempty"`
+	ReaderURLs        []string `json:"readerURLs,omitempty"`
+	PaginationURLs    []string `json:"paginationURLs,omitempty"`
+	ImageURLs         []string `json:"imageURLs,omitempty"`
 	FilteredImageURLs []string `json:"filteredImageURLs,omitempty"`
-	SharedSignatures []string `json:"sharedSignatures,omitempty"`
+	SharedSignatures  []string `json:"sharedSignatures,omitempty"`
 }
 
 // ParseReaderPage parses the reader page and extracts the key navigation and image candidates.
@@ -62,20 +63,32 @@ func ParseReaderPage(baseURL, readerURL, pageHTML string) (ReaderPage, error) {
 	signatures := InferReaderSignaturePair(imageURLs, 6)
 	filteredImageURLs := FilterReaderImageURLsBySignatures(imageURLs, signatures)
 	activation := ParseReaderActivationHint(pageHTML)
+	log.Printf("zeri reader parse: url=%s title=%q pages=%d readerURLs=%d paginationURLs=%d imageURLs=%d filtered=%d signatures=%v has100=%t clickCount=%d",
+		readerURL,
+		title,
+		pageCount,
+		len(readerURLs),
+		len(paginationURLs),
+		len(imageURLs),
+		len(filteredImageURLs),
+		signatures,
+		activation.HasZoom100,
+		activation.ClickCount,
+	)
 
 	return ReaderPage{
-		BaseURL:          baseURL,
-		URL:              readerURL,
-		Title:            title,
-		PageCount:        pageCount,
-		LengthText:       lengthText,
-		HasZoom100:       activation.HasZoom100,
-		Zoom100Clicks:    activation.ClickCount,
-		ReaderURLs:       readerURLs,
-		PaginationURLs:   paginationURLs,
-		ImageURLs:        imageURLs,
+		BaseURL:           baseURL,
+		URL:               readerURL,
+		Title:             title,
+		PageCount:         pageCount,
+		LengthText:        lengthText,
+		HasZoom100:        activation.HasZoom100,
+		Zoom100Clicks:     activation.ClickCount,
+		ReaderURLs:        readerURLs,
+		PaginationURLs:    paginationURLs,
+		ImageURLs:         imageURLs,
 		FilteredImageURLs: filteredImageURLs,
-		SharedSignatures: signatures,
+		SharedSignatures:  signatures,
 	}, nil
 }
 
@@ -121,8 +134,8 @@ func ParseReaderImageURLs(baseURL, pageHTML string) ([]string, error) {
 // activate reader-mode zooming.
 type ReaderActivationHint struct {
 	HasZoom100 bool   `json:"hasZoom100"`
-	ClickText   string `json:"clickText"`
-	ClickCount  int    `json:"clickCount"`
+	ClickText  string `json:"clickText"`
+	ClickCount int    `json:"clickCount"`
 }
 
 // ParseReaderActivationHint scans the page HTML for 100% activation points.
@@ -161,7 +174,6 @@ func collectReaderPaginationURLs(baseURL, pageHTML string) []string {
 		seen[candidate] = struct{}{}
 		resolved = append(resolved, candidate)
 	}
-	sort.Strings(resolved)
 	return resolved
 }
 
@@ -184,7 +196,6 @@ func collectReaderImageURLs(baseURL, pageHTML string) []string {
 			resolved = append(resolved, candidate)
 		}
 	}
-	sort.Strings(resolved)
 	return resolved
 }
 
