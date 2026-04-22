@@ -122,3 +122,9 @@ Each finished task also persists a report file at:
 - 当前公共 UI 以 Firefox 路线为主。
 - Chromium 仍保留在代码中，主要用于内部探针和后续兼容性工作。
 - 便携版的持久状态现在以 `portable-data/` 为根目录，不再依赖临时解包目录。
+## Progress refresh interval
+
+- The Win32 frontend exposes a `Set progress refresh interval...` menu item.
+- The value is stored in the frontend state and restored on next launch.
+- It controls how often fast task progress updates are coalesced before the task board redraws.
+- Default: `80ms`.

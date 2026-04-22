@@ -120,3 +120,9 @@ When you need to verify the exact profile directory used by a run, use these bui
 - The add-task box is cleared as soon as a task is accepted.
 - Zeri downloads are saved directly under the configured output root and manga title, without a site-name directory layer in between.
 
+## Progress refresh interval
+
+- The Win32 frontend now exposes a `Set progress refresh interval...` menu item.
+- The value is stored in the frontend state and restored on the next launch.
+- It controls how often rapid task progress updates are coalesced before the task board redraws.
+- The default interval is `80ms`.

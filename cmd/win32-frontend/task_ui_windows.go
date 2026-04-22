@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unicode/utf16"
 	"unsafe"
 
@@ -50,13 +51,15 @@ var (
 )
 
 type concurrencyPromptState struct {
-	owner  HWND
-	hwnd   HWND
-	edit   HWND
-	value  int
-	result int
-	ok     bool
-	done   chan struct{}
+	owner       HWND
+	hwnd        HWND
+	edit        HWND
+	value       int
+	result      int
+	ok          bool
+	done        chan struct{}
+	windowTitle string
+	labelText   string
 }
 
 func registerConcurrencyPromptClass(hInstance HINSTANCE) error {
@@ -84,18 +87,20 @@ func registerConcurrencyPromptClass(hInstance HINSTANCE) error {
 	return err
 }
 
-func promptConcurrencyDialog(owner HWND, current int) (int, bool) {
+func promptIntegerDialog(owner HWND, current int, windowTitle, labelText string) (int, bool) {
 	hInstance, _, _ := procGetModuleHandleW.Call(0)
 	if err := registerConcurrencyPromptClass(HINSTANCE(hInstance)); err != nil {
 		return 0, false
 	}
 	state := &concurrencyPromptState{
-		owner: owner,
-		value: current,
-		done:  make(chan struct{}),
+		owner:       owner,
+		value:       current,
+		done:        make(chan struct{}),
+		windowTitle: windowTitle,
+		labelText:   labelText,
 	}
 	className, _ := utf16Ptr(promptClass)
-	title, _ := utf16Ptr("\u8bbe\u7f6e\u5e76\u53d1\u6570")
+	title, _ := utf16Ptr(windowTitle)
 	hwnd, _, err := procCreateWindowExW.Call(
 		WS_EX_DLGMODALFRAME,
 		uintptr(unsafe.Pointer(className)),
@@ -211,7 +216,7 @@ func createConcurrencyPromptControls(hwnd HWND, state *concurrencyPromptState) {
 		w, h  int32
 		id    int
 	}{
-		{class: "Static", text: "\u8bf7\u8f93\u5165\u5e76\u53d1\u6570\uff1a", x: 18, y: 18, w: 300, h: 20, id: 1001},
+		{class: "Static", text: state.labelText, x: 18, y: 18, w: 300, h: 20, id: 1001},
 		{class: "Edit", text: strconv.Itoa(max(1, state.value)), x: 18, y: 44, w: 304, h: 28, id: 1002},
 		{class: "Button", text: "\u786e\u5b9a", x: 138, y: 84, w: 80, h: 28, id: 1},
 		{class: "Button", text: "\u53d6\u6d88", x: 232, y: 84, w: 80, h: 28, id: 2},
@@ -245,7 +250,7 @@ func createConcurrencyPromptControls(hwnd HWND, state *concurrencyPromptState) {
 }
 
 func (a *frontendApp) promptConcurrency() {
-	value, ok := promptConcurrencyDialog(a.hwnd, a.currentConcurrency())
+	value, ok := promptIntegerDialog(a.hwnd, a.currentConcurrency(), "\u8bbe\u7f6e\u5e76\u53d1\u6570", "\u8bf7\u8f93\u5165\u5e76\u53d1\u6570\uff1a")
 	if !ok {
 		a.setStatus("concurrency unchanged")
 		return
@@ -257,6 +262,25 @@ func (a *frontendApp) promptConcurrency() {
 	a.updateConcurrencyButton(value)
 	a.persistFrontendState()
 	a.setStatus("concurrency set to %d", value)
+	a.post(msgRefreshInfo)
+}
+
+func (a *frontendApp) promptProgressDelayDialog() {
+	value, ok := promptIntegerDialog(a.hwnd, a.currentProgressDelayMS(), "\u8bbe\u7f6e\u8fdb\u5ea6\u5237\u65b0\u95f4\u9694", "\u8bf7\u8f93\u5165\u8fdb\u5ea6\u5237\u65b0\u95f4\u9694\uff08ms\uff09\uff1a")
+	if !ok {
+		a.setStatus("progress refresh interval unchanged")
+		return
+	}
+	if value < 10 {
+		value = 10
+	}
+	delay := time.Duration(value) * time.Millisecond
+	a.mu.Lock()
+	a.progressDelay = delay
+	a.mu.Unlock()
+	a.todo.SetProgressNotifyDelay(delay)
+	a.persistFrontendState()
+	a.setStatus("progress refresh interval set to %dms", value)
 	a.post(msgRefreshInfo)
 }
 

@@ -41,3 +41,9 @@ dist\portable.exe
 
 - 当前公共 UI 以 Firefox 路线为主。
 - Chromium 仍在代码中保留，用于内部探针与兼容性测试。
+## Progress refresh interval
+
+- The Win32 frontend exposes a `Set progress refresh interval...` menu item.
+- The value is stored in the frontend state and restored on next launch.
+- It controls how often fast task progress updates are coalesced before the task board redraws.
+- Default: `80ms`.

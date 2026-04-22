@@ -50,19 +50,23 @@ type TodoItem struct {
 
 // TodoList manages items that are added as pending and started later in batch.
 type TodoList struct {
-	mu          sync.Mutex
-	cond        *sync.Cond
-	seq         int
-	items       []TodoItem
-	notifier    func()
-	runtimeRoot string
-	maxParallel int
-	running     int
+	mu                sync.Mutex
+	cond              *sync.Cond
+	seq               int
+	items             []TodoItem
+	notifier          func()
+	runtimeRoot       string
+	maxParallel       int
+	running           int
+	progressNotifyMu  sync.Mutex
+	progressNotifyAt  time.Time
+	progressNotifyRun bool
+	progressDelay     time.Duration
 }
 
 // NewTodoList builds an empty todo list.
 func NewTodoList() *TodoList {
-	l := &TodoList{maxParallel: 1}
+	l := &TodoList{maxParallel: 1, progressDelay: 80 * time.Millisecond}
 	l.cond = sync.NewCond(&l.mu)
 	return l
 }
@@ -86,6 +90,16 @@ func (l *TodoList) SetConcurrencyLimit(maxParallel int) {
 	l.maxParallel = maxParallel
 	l.cond.Broadcast()
 	l.mu.Unlock()
+}
+
+// SetProgressNotifyDelay updates the minimum delay between task list refresh notifications.
+func (l *TodoList) SetProgressNotifyDelay(delay time.Duration) {
+	if delay <= 0 {
+		delay = 80 * time.Millisecond
+	}
+	l.progressNotifyMu.Lock()
+	l.progressDelay = delay
+	l.progressNotifyMu.Unlock()
 }
 
 // SetNotifier sets a callback that is invoked whenever the list changes.
@@ -892,10 +906,42 @@ func (l *TodoList) makeProgressUpdater(itemID string) func(zeri.DownloadProgress
 		l.items[index] = item
 		notifier := l.notifier
 		l.mu.Unlock()
-		if notifier != nil {
-			notifier()
-		}
+		l.scheduleProgressNotify(notifier)
 	}
+}
+
+func (l *TodoList) scheduleProgressNotify(notifier func()) {
+	if notifier == nil {
+		return
+	}
+	delay := l.progressDelay
+	if delay <= 0 {
+		delay = 80 * time.Millisecond
+	}
+	l.progressNotifyMu.Lock()
+	l.progressNotifyAt = time.Now()
+	if l.progressNotifyRun {
+		l.progressNotifyMu.Unlock()
+		return
+	}
+	l.progressNotifyRun = true
+	l.progressNotifyMu.Unlock()
+	time.AfterFunc(delay, func() {
+		for {
+			l.progressNotifyMu.Lock()
+			elapsed := time.Since(l.progressNotifyAt)
+			if elapsed < delay {
+				remaining := delay - elapsed
+				l.progressNotifyMu.Unlock()
+				time.Sleep(remaining)
+				continue
+			}
+			l.progressNotifyRun = false
+			l.progressNotifyMu.Unlock()
+			notifier()
+			return
+		}
+	})
 }
 
 func (l *TodoList) findItemIndexByIDLocked(id string) (int, bool) {

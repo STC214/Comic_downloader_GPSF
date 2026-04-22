@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "savedAt": "2026-04-22T01:56:26.3288666Z",
+  "selectedBrowser": "firefox",
+  "firefoxExecutablePath": "C:\\Program Files\\Mozilla Firefox\\firefox.exe",
+  "firefoxInstallRoot": "F:\\Project\\comic_downloader_GO_Playwright_stealth\\dist\\portable-data\\playwright-browsers\\firefox",
+  "chromiumInstallRoot": "F:\\Project\\comic_downloader_GO_Playwright_stealth\\dist\\portable-data\\playwright-browsers\\chromium",
+  "playwrightDriverDir": "F:\\Project\\comic_downloader_GO_Playwright_stealth\\dist\\portable-data\\playwright-browsers\\driver",
+  "downloadDir": "output",
+  "concurrency": 1,
+  "progressRefreshMs": 80,
+  "windowPlacement": {
+    "showCmd": 1,
+    "minPositionX": -1,
+    "minPositionY": -1,
+    "maxPositionX": -1,
+    "maxPositionY": -1,
+    "normalPositionLeft": 156,
+    "normalPositionTop": 156,
+    "normalPositionRight": 1456,
+    "normalPositionBottom": 1056
+  }
+}

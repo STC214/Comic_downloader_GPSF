@@ -61,7 +61,7 @@ func taskBoardRefresh(hwnd HWND) {
 	app.mu.Unlock()
 	procSetScrollRange.Call(uintptr(hwnd), 1, 0, uintptr(maxScroll), 1)
 	procSetScrollPos.Call(uintptr(hwnd), 1, uintptr(scrollY), 1)
-	procInvalidateRect.Call(uintptr(hwnd), 0, 1)
+	procInvalidateRect.Call(uintptr(hwnd), 0, 0)
 }
 
 func taskBoardVisibleHeight(hwnd HWND) int {
@@ -89,6 +89,8 @@ func taskBoardWindowProc(hwnd HWND, msg uint32, wParam, lParam uintptr) uintptr 
 	case WM_CONTEXTMENU:
 		taskBoardContextMenu(hwnd, lParam)
 		return 0
+	case WM_ERASEBKGND:
+		return 1
 	case WM_MOUSEWHEEL:
 		return taskBoardMouseWheel(hwnd, wParam)
 	case WM_VSCROLL:
@@ -228,7 +230,7 @@ func taskBoardMouseWheel(hwnd HWND, wParam uintptr) uintptr {
 	app.taskScrollY = scrollY
 	app.mu.Unlock()
 	procSetScrollPos.Call(uintptr(hwnd), 1, uintptr(scrollY), 1)
-	procInvalidateRect.Call(uintptr(hwnd), 0, 1)
+	procInvalidateRect.Call(uintptr(hwnd), 0, 0)
 	return 0
 }
 
@@ -273,17 +275,45 @@ func taskBoardVScroll(hwnd HWND, wParam uintptr) uintptr {
 	app.taskScrollY = scrollY
 	app.mu.Unlock()
 	procSetScrollPos.Call(uintptr(hwnd), 1, uintptr(scrollY), 1)
-	procInvalidateRect.Call(uintptr(hwnd), 0, 1)
+	procInvalidateRect.Call(uintptr(hwnd), 0, 0)
 	return 0
 }
 
 func taskBoardPaint(hwnd HWND) {
 	var ps PAINTSTRUCT
-	hdc, _, _ := procBeginPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
-	if hdc == 0 {
+	paintDC, _, _ := procBeginPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
+	if paintDC == 0 {
 		return
 	}
 	defer procEndPaint.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&ps)))
+
+	var rc RECT
+	if r, _, _ := procGetClientRect.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&rc))); r == 0 {
+		return
+	}
+	width := int(rc.Right - rc.Left)
+	height := int(rc.Bottom - rc.Top)
+	if width <= 0 || height <= 0 {
+		return
+	}
+
+	memDC, _, _ := procCreateCompatibleDC.Call(paintDC)
+	if memDC == 0 {
+		return
+	}
+	defer procDeleteDC.Call(memDC)
+
+	memBmp, _, _ := procCreateCompatibleBitmap.Call(paintDC, uintptr(width), uintptr(height))
+	if memBmp == 0 {
+		return
+	}
+	defer procDeleteObject.Call(memBmp)
+
+	oldBmp, _, _ := procSelectObject.Call(memDC, memBmp)
+	if oldBmp == 0 {
+		return
+	}
+	defer procSelectObject.Call(memDC, oldBmp)
 
 	brushBg, _, _ := procCreateSolidBrush.Call(uintptr(rgb(18, 22, 28)))
 	defer procDeleteObject.Call(brushBg)
@@ -308,47 +338,51 @@ func taskBoardPaint(hwnd HWND) {
 	brushSelectedBorder, _, _ := procCreateSolidBrush.Call(uintptr(rgb(128, 200, 138)))
 	defer procDeleteObject.Call(brushSelectedBorder)
 
-	procFillRect.Call(hdc, uintptr(unsafe.Pointer(&ps.RcPaint)), brushBg)
-	procSetBkMode.Call(hdc, 1)
+	procFillRect.Call(memDC, uintptr(unsafe.Pointer(&rc)), brushBg)
+	procSetBkMode.Call(memDC, 1)
 
-	var rc RECT
-	if r, _, _ := procGetClientRect.Call(uintptr(hwnd), uintptr(unsafe.Pointer(&rc))); r == 0 {
-		return
-	}
-	width := int(rc.Right - rc.Left)
-	visibleHeight := int(rc.Bottom - rc.Top)
+	visibleHeight := height
 	scrollY := app.taskScrollSnapshot()
 
 	itemCount := app.todo.Count()
-	if itemCount == 0 {
-		return
-	}
 	rowHeight := taskCardHeight + taskCardGap
 	if rowHeight <= 0 {
 		rowHeight = 1
 	}
-	first := (scrollY - taskCardTopMargin) / rowHeight
-	if first < 0 {
-		first = 0
-	}
-	last := (scrollY + visibleHeight - taskCardTopMargin) / rowHeight
-	if last < first {
-		last = first
-	}
-	last += 2
-	if last > itemCount {
-		last = itemCount
-	}
-	items := app.todo.ItemsRange(first, last)
-	for idx, item := range items {
-		absoluteIdx := first + idx
-		top := taskCardTopMargin + absoluteIdx*rowHeight - scrollY
-		bottom := top + taskCardHeight
-		if bottom < 0 || top > visibleHeight {
-			continue
+	if itemCount > 0 {
+		first := (scrollY - taskCardTopMargin) / rowHeight
+		if first < 0 {
+			first = 0
 		}
-		drawTaskCard(HDC(hdc), width, top, item, resolveTaskCardThumbnailPath(item), app.taskSelected(item.ID), brushCard, brushThumb, brushBorder, brushBarBg, brushPending, brushWait, brushDone, brushFail, brushSelected, brushSelectedBorder)
+		last := (scrollY + visibleHeight - taskCardTopMargin) / rowHeight
+		if last < first {
+			last = first
+		}
+		last += 2
+		if last > itemCount {
+			last = itemCount
+		}
+		items := app.todo.ItemsRange(first, last)
+		for idx, item := range items {
+			absoluteIdx := first + idx
+			top := taskCardTopMargin + absoluteIdx*rowHeight - scrollY
+			bottom := top + taskCardHeight
+			if bottom < 0 || top > visibleHeight {
+				continue
+			}
+			drawTaskCard(HDC(memDC), width, top, item, resolveTaskCardThumbnailPath(item), app.taskSelected(item.ID), brushCard, brushThumb, brushBorder, brushBarBg, brushPending, brushWait, brushDone, brushFail, brushSelected, brushSelectedBorder)
+		}
 	}
+
+	procBitBlt.Call(
+		paintDC,
+		0, 0,
+		uintptr(width),
+		uintptr(height),
+		memDC,
+		0, 0,
+		SRCCOPY,
+	)
 }
 
 func drawTaskCard(hdc HDC, width, top int, item ui.TodoItem, thumbnailPath string, selected bool, brushCard, brushThumb, brushBorder, brushBarBg, brushPending, brushWait, brushDone, brushFail, brushSelected, brushSelectedBorder uintptr) {

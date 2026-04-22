@@ -35,6 +35,7 @@ type FrontendState struct {
 	PlaywrightDriverDir    string                  `json:"playwrightDriverDir,omitempty"`
 	DownloadDir            string                  `json:"downloadDir,omitempty"`
 	Concurrency            int                     `json:"concurrency,omitempty"`
+	ProgressRefreshMs      int                     `json:"progressRefreshMs,omitempty"`
 	WindowPlacement        FrontendWindowPlacement `json:"windowPlacement,omitempty"`
 }
 

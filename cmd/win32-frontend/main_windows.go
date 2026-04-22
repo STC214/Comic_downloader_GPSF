@@ -24,23 +24,24 @@ const (
 	windowClassName = "ComicDownloaderWin32Frontend"
 	windowTitle     = "\u6f2b\u753b\u4e0b\u8f7d\u5668"
 
-	menuIDSetExecutable   = 1001
-	menuIDSetChromium     = 1002
-	menuIDStartAll        = 1003
-	menuIDSetDownloadDir  = 1004
-	menuIDSetConcurrency  = 1005
-	menuIDRefreshAdblock  = 1006
-	menuIDClearCompleted  = 1007
-	menuIDInstallBrowsers = 1008
-	menuIDImportHistory   = 1009
-	menuIDSetDriver       = 1010
-	menuIDTaskRetry       = 1011
-	menuIDTaskDetails     = 1012
-	menuIDTaskOpenDir     = 1013
-	menuIDTaskCopyURL     = 1014
-	menuIDTaskDelete      = 1015
-	menuIDTaskStart       = 1016
-	menuIDTaskPause       = 1017
+	menuIDSetExecutable    = 1001
+	menuIDSetChromium      = 1002
+	menuIDStartAll         = 1003
+	menuIDSetDownloadDir   = 1004
+	menuIDSetConcurrency   = 1005
+	menuIDSetProgressDelay = 1006
+	menuIDRefreshAdblock   = 1007
+	menuIDClearCompleted   = 1008
+	menuIDInstallBrowsers  = 1009
+	menuIDImportHistory    = 1010
+	menuIDSetDriver        = 1011
+	menuIDTaskRetry        = 1012
+	menuIDTaskDetails      = 1013
+	menuIDTaskOpenDir      = 1014
+	menuIDTaskCopyURL      = 1015
+	menuIDTaskDelete       = 1016
+	menuIDTaskStart        = 1017
+	menuIDTaskPause        = 1018
 
 	controlIDURLEdit        = 2001
 	controlIDAddTask        = 2002
@@ -126,6 +127,10 @@ var (
 	procSetTextColor                            = gdi32.NewProc("SetTextColor")
 	procTextOutW                                = gdi32.NewProc("TextOutW")
 	procCreateFontW                             = gdi32.NewProc("CreateFontW")
+	procCreateCompatibleDC                      = gdi32.NewProc("CreateCompatibleDC")
+	procCreateCompatibleBitmap                  = gdi32.NewProc("CreateCompatibleBitmap")
+	procBitBlt                                  = gdi32.NewProc("BitBlt")
+	procDeleteDC                                = gdi32.NewProc("DeleteDC")
 	procGetStockObject                          = gdi32.NewProc("GetStockObject")
 	procDwmSetWindowAttribute                   = dwmapi.NewProc("DwmSetWindowAttribute")
 	procSetPreferredAppMode                     = uxtheme.NewProc("SetPreferredAppMode")
@@ -230,6 +235,7 @@ const (
 	LR_LOADFROMFILE = 0x00000010
 	LR_DEFAULTSIZE  = 0x00000040
 	LR_SHARED       = 0x00008000
+	SRCCOPY         = 0x00CC0020
 	TPM_LEFTALIGN   = 0x0000
 	TPM_RIGHTBUTTON = 0x0002
 	TPM_RETURNCMD   = 0x0100
@@ -388,6 +394,7 @@ type frontendApp struct {
 	todo          *ui.TodoList
 	downloadDir   string
 	concurrency   int
+	progressDelay time.Duration
 	adblockInfo   string
 
 	hwnd HWND
@@ -467,6 +474,7 @@ func newFrontendApp(workspaceRoot string) *frontendApp {
 		todo:              ui.NewTodoList(),
 		downloadDir:       projectruntime.DefaultDownloadDir(workspaceRoot),
 		concurrency:       1,
+		progressDelay:     80 * time.Millisecond,
 		adblockInfo:       "rules not loaded",
 		selectedTaskIDs:   map[string]bool{},
 		status:            "ready",
@@ -474,6 +482,7 @@ func newFrontendApp(workspaceRoot string) *frontendApp {
 	}
 	app.todo.SetRuntimeRoot(projectruntime.ResolveRuntimeRoot(workspaceRoot))
 	app.todo.SetConcurrencyLimit(app.concurrency)
+	app.todo.SetProgressNotifyDelay(app.progressDelay)
 	if state, err := projectruntime.LoadFrontendState(app.frontendStatePath); err == nil {
 		app.applyFrontendState(state)
 	}
@@ -517,10 +526,14 @@ func (a *frontendApp) applyFrontendState(state projectruntime.FrontendState) {
 	if state.Concurrency > 0 {
 		a.concurrency = state.Concurrency
 	}
+	if state.ProgressRefreshMs > 0 {
+		a.progressDelay = time.Duration(state.ProgressRefreshMs) * time.Millisecond
+	}
 	a.windowPlacement = state.WindowPlacement
 	a.windowPlacementSet = !frontendWindowPlacementZero(state.WindowPlacement)
 	a.mu.Unlock()
 	a.todo.SetConcurrencyLimit(a.currentConcurrency())
+	a.todo.SetProgressNotifyDelay(a.currentProgressDelay())
 }
 
 func (a *frontendApp) persistFrontendState() {
@@ -531,6 +544,7 @@ func (a *frontendApp) persistFrontendState() {
 	menu := a.menuState
 	downloadDir := a.downloadDir
 	concurrency := a.concurrency
+	progressRefreshMs := int(a.progressDelay / time.Millisecond)
 	a.mu.RUnlock()
 	state := projectruntime.FrontendState{
 		Version:                1,
@@ -542,6 +556,7 @@ func (a *frontendApp) persistFrontendState() {
 		PlaywrightDriverDir:    menu.PlaywrightDriverDir,
 		DownloadDir:            projectruntime.RelativizePath(a.workspaceRoot, downloadDir),
 		Concurrency:            concurrency,
+		ProgressRefreshMs:      progressRefreshMs,
 		WindowPlacement:        a.currentWindowPlacement(),
 	}
 	if err := projectruntime.SaveFrontendState(a.frontendStatePath, state); err != nil {
@@ -766,6 +781,7 @@ func (a *frontendApp) attachMenu(hwnd HWND) {
 	addMenuItem(browserMenu, menuIDSetDriver, "\u8bbe\u7f6e Playwright driver \u76ee\u5f55...")
 	addMenuItem(settingsMenu, menuIDSetDownloadDir, "\u8bbe\u7f6e\u4e0b\u8f7d\u76ee\u5f55...")
 	addMenuItem(settingsMenu, menuIDSetConcurrency, "\u8bbe\u7f6e\u5e76\u53d1\u6570...")
+	addMenuItem(settingsMenu, menuIDSetProgressDelay, "\u8bbe\u7f6e\u8fdb\u5ea6\u5237\u65b0\u95f4\u9694...")
 	addMenuItem(settingsMenu, menuIDRefreshAdblock, "\u66f4\u65b0\u5e7f\u544a\u62e6\u622a\u89c4\u5219")
 	addMenuItem(taskMenu, menuIDStartAll, "\u5f00\u59cb\u6240\u6709\u672a\u5b8c\u6210\u4efb\u52a1")
 	addMenuItem(taskMenu, menuIDImportHistory, "\u5bfc\u5165\u5386\u53f2\u8bb0\u5f55...")
@@ -983,6 +999,8 @@ func (a *frontendApp) handleCommand(id uint16) {
 		a.pickDownloadDir()
 	case menuIDSetConcurrency:
 		a.promptConcurrency()
+	case menuIDSetProgressDelay:
+		a.promptProgressDelay()
 	case menuIDRefreshAdblock:
 		a.refreshAdblockRules()
 	case menuIDClearCompleted:
@@ -1155,6 +1173,10 @@ func (a *frontendApp) cycleConcurrency() {
 	a.post(msgRefreshInfo)
 }
 
+func (a *frontendApp) promptProgressDelay() {
+	a.promptProgressDelayDialog()
+}
+
 func (a *frontendApp) refreshAdblockRules() {
 	rulePath := filepath.Join(a.workspaceRoot, "adblock", "AWAvenue-Ads-Rule.txt")
 	data, err := os.ReadFile(rulePath)
@@ -1184,6 +1206,19 @@ func (a *frontendApp) updateConcurrencyButton(value int) {
 	label := fmt.Sprintf("\u5e76\u53d1 x%d", value)
 	text, _ := utf16Ptr(label)
 	procSetWindowTextW.Call(uintptr(a.concurrencyBtn), uintptr(unsafe.Pointer(text)))
+}
+
+func (a *frontendApp) currentProgressDelay() time.Duration {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	if a.progressDelay <= 0 {
+		return 80 * time.Millisecond
+	}
+	return a.progressDelay
+}
+
+func (a *frontendApp) currentProgressDelayMS() int {
+	return int(a.currentProgressDelay() / time.Millisecond)
 }
 
 func (a *frontendApp) addPendingTask() {
