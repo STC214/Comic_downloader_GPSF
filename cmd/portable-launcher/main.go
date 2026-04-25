@@ -78,9 +78,10 @@ func run() error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
+	playwrightRoot := filepath.Join(portableDataRoot, "playwright-browsers")
 	cmd.Env = append(os.Environ(),
-		"PLAYWRIGHT_BROWSERS_PATH="+defaultEnv("PLAYWRIGHT_BROWSERS_PATH", `D:\Program\playwright-browsers`),
-		"PLAYWRIGHT_DRIVER_PATH="+defaultEnv("PLAYWRIGHT_DRIVER_PATH", `D:\Program\playwright-browsers\driver`),
+		"PLAYWRIGHT_BROWSERS_PATH="+defaultEnv("PLAYWRIGHT_BROWSERS_PATH", playwrightRoot),
+		"PLAYWRIGHT_DRIVER_PATH="+defaultEnv("PLAYWRIGHT_DRIVER_PATH", filepath.Join(playwrightRoot, "driver")),
 		"COMIC_DOWNLOADER_WORKSPACE_ROOT="+portableDataRoot,
 		"COMIC_DOWNLOADER_RUNTIME_ROOT="+portableDataRoot,
 		"COMIC_DOWNLOADER_LOG_ROOT="+filepath.Join(portableDataRoot, "logs"),

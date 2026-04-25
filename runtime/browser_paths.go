@@ -6,7 +6,6 @@ import (
 )
 
 const defaultFirefoxExecutablePath = `C:\Program Files\Mozilla Firefox\firefox.exe`
-const defaultChromiumProfileSourceDir = `C:\Users\stc52\AppData\Local\Google\Chrome for Testing\User Data`
 
 // BrowserType identifies the project-managed browser family.
 type BrowserType string
@@ -14,8 +13,6 @@ type BrowserType string
 const (
 	// BrowserTypeFirefox identifies the bundled Firefox runtime.
 	BrowserTypeFirefox BrowserType = "firefox"
-	// BrowserTypeChromium identifies the Playwright Chromium runtime.
-	BrowserTypeChromium BrowserType = "chromium"
 )
 
 // BrowserPathKind identifies a precise project-managed browser path.
@@ -82,16 +79,6 @@ func DefaultFirefoxUserDataDir(runtimeRoot string) string {
 	return filepath.Join(normalizeRoot(runtimeRoot), "browser-profiles", "baseline-userdata")
 }
 
-// DefaultChromiumInstallDir returns the project-default Chromium install directory.
-func DefaultChromiumInstallDir(runtimeRoot string) string {
-	return filepath.Join(normalizeRoot(runtimeRoot), "playwright-browsers", "chromium")
-}
-
-// DefaultChromiumProfileSourceDir returns the default Chromium mother profile directory.
-func DefaultChromiumProfileSourceDir() string {
-	return defaultChromiumProfileSourceDir
-}
-
 // DefaultFirefoxInstallDir returns the project-default Firefox install directory.
 func DefaultFirefoxInstallDir(runtimeRoot string) string {
 	return filepath.Join(normalizeRoot(runtimeRoot), "playwright-browsers", "firefox")
@@ -100,12 +87,6 @@ func DefaultFirefoxInstallDir(runtimeRoot string) string {
 // DefaultPlaywrightDriverDir returns the project-default Playwright driver directory.
 func DefaultPlaywrightDriverDir(runtimeRoot string) string {
 	return filepath.Join(normalizeRoot(runtimeRoot), "playwright-browsers", "driver")
-}
-
-// DefaultChromiumExecutablePath returns the project-default Chromium executable path guess.
-// The actual executable is resolved by searching under the install root.
-func DefaultChromiumExecutablePath(runtimeRoot string) string {
-	return filepath.Join(DefaultChromiumInstallDir(runtimeRoot), "chrome.exe")
 }
 
 // DefaultFirefoxExecutablePath returns the exact bundled Firefox executable path.

@@ -31,7 +31,7 @@ Several command packages have no test files, which is expected for the current p
 - `cmd/win32-frontend`: Windows desktop UI entry point.
 - `cmd/portable-launcher`: single-file launcher that extracts the packaged frontend and points persistent data at `portable-data\`.
 - `cmd/task-probe`: Playwright-backed task smoke-test entry point, built with `-tags playwright`.
-- `browser`: Playwright session middleware for Firefox and Chromium.
+- `browser`: Playwright session middleware for Firefox.
 - `runtime`: runtime path, browser profile, frontend state, logging, and install helpers.
 - `tasks`: task-level browser launch normalization and result reporting.
 - `siteflow/zeri`: Zeri page parsing, reader flow, image download, and thumbnail helpers.
@@ -42,13 +42,13 @@ Several command packages have no test files, which is expected for the current p
 ### High Priority
 
 - README had an obsolete run command: `go run ./cmd/comic-downloader`. The repository currently has no `cmd/comic-downloader`; the actual frontend entry point is `go run -tags playwright ./cmd/win32-frontend`. This has been corrected in README.
-- `go.mod` uses local absolute `replace` directives such as `F:/Programer/Go_Workspace/pkg/mod/...`. This makes the project non-portable on another machine unless the same module cache paths exist. For shared development, prefer removing these replaces or documenting a local-only workflow.
+- The previous local absolute `replace` directives in `go.mod` have been removed so module resolution can work on another machine.
 
 ### Medium Priority
 
-- Runtime and distribution artifacts are present in the repository tree, including `dist\portable.exe`, `dist\portable-data\...`, `portable-run.log`, and `temp.txt`. Some may be intentional release artifacts, but they blur source vs. generated state. Decide which artifacts are meant to be versioned and move the rest behind `.gitignore` plus cleanup.
-- The project contains `backup_check\`, which appears to be a snapshot copy of large parts of the codebase. Keeping it in the main tree makes searches noisy and can hide which implementation is authoritative.
-- Several tests and defaults contain machine-specific paths, for example `F:\Project\...`, `D:\Program\playwright-browsers`, and a user Firefox profile under `C:\Users\stc52\...`. Most tests still pass, but new contributors need to understand which values are fixtures and which are runtime defaults.
+- Runtime and distribution artifacts were trimmed. The intended release surface is the single-file executable plus its required portable data folder.
+- The duplicate `backup_check\` snapshot was removed.
+- Machine-specific defaults were reduced. Firefox profile source discovery now relies on environment or standard Firefox profile discovery.
 
 ### Low Priority
 

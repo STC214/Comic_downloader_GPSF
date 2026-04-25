@@ -1,7 +1,7 @@
 # Browser Profile Flow
 
-This repository currently uses a Firefox-first browser flow for the public UI.
-Firefox tasks launch from a fresh temporary Playwright profile, while Chromium remains available only for internal probe and compatibility work.
+This repository currently uses a Firefox-only browser flow for the public UI and task layer.
+Firefox tasks launch from a fresh temporary Playwright profile.
 
 ## Current Firefox launch flow
 
@@ -16,8 +16,8 @@ Firefox tasks launch from a fresh temporary Playwright profile, while Chromium r
 ## Current defaults
 
 - Browser executable: user-configurable, with a system Firefox fallback in the code.
-- Browser install root in this workspace: `D:\Program\playwright-browsers`
-- Playwright driver directory in this workspace: `D:\Program\playwright-browsers\driver`
+- Browser install root in this workspace: `runtime\playwright-browsers`
+- Playwright driver directory in this workspace: `runtime\playwright-browsers\driver`
 - Default Firefox User-Agent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0`
 - Default locale: `en-US`
 - Default timezone: `Asia/Shanghai`
@@ -46,12 +46,6 @@ When a Firefox task needs its own profile, the runtime creates a fresh temp root
 
 That temp root is disposable and is removed after the task ends.
 
-When a Chromium probe is explicitly used, the runtime creates a brand-new temporary profile under:
-
-- `runtime/browser-profiles/tasks/chromium-fresh-*`
-
-Those Chromium paths are internal only and are not part of the public UI flow.
-
 ## Why this matters
 
 The goal is to keep the browser run reproducible while still starting from a temporary profile:
@@ -66,9 +60,6 @@ The goal is to keep the browser run reproducible while still starting from a tem
 
 These built-in pages are the fastest way to verify which profile a browser is actually using:
 
-- `chrome://version`
-  - Best for Chromium and Chromium-based probes.
-  - Check `Profile Path` to confirm the exact profile directory in use.
 - `about:support`
   - Best for Firefox.
   - Check `Application Basics -> Profile Directory` to confirm the exact profile directory in use.

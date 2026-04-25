@@ -25,7 +25,6 @@ const (
 	windowTitle     = "\u6f2b\u753b\u4e0b\u8f7d\u5668"
 
 	menuIDSetExecutable    = 1001
-	menuIDSetChromium      = 1002
 	menuIDStartAll         = 1003
 	menuIDSetDownloadDir   = 1004
 	menuIDSetConcurrency   = 1005
@@ -464,7 +463,6 @@ func newFrontendApp(workspaceRoot string) *frontendApp {
 	_ = paths.Ensure()
 	menu := ui.DefaultBrowserMenuState().
 		WithFirefoxExecutablePath(projectruntime.DefaultFirefoxExecutablePath(paths.Root)).
-		WithChromiumInstallRoot(projectruntime.DefaultChromiumInstallDir(paths.Root)).
 		WithFirefoxInstallRoot(projectruntime.DefaultFirefoxInstallDir(paths.Root))
 	app := &frontendApp{
 		workspaceRoot:     workspaceRoot,
@@ -511,12 +509,6 @@ func (a *frontendApp) applyFrontendState(state projectruntime.FrontendState) {
 	if strings.TrimSpace(state.FirefoxInstallRoot) != "" {
 		a.menuState = a.menuState.WithFirefoxInstallRoot(state.FirefoxInstallRoot)
 	}
-	if strings.TrimSpace(state.ChromiumExecutablePath) != "" {
-		a.menuState = a.menuState.WithChromiumExecutablePath(state.ChromiumExecutablePath)
-	}
-	if strings.TrimSpace(state.ChromiumInstallRoot) != "" {
-		a.menuState = a.menuState.WithChromiumInstallRoot(state.ChromiumInstallRoot)
-	}
 	if strings.TrimSpace(state.PlaywrightDriverDir) != "" {
 		a.menuState = a.menuState.WithPlaywrightDriverDir(state.PlaywrightDriverDir)
 	}
@@ -547,17 +539,15 @@ func (a *frontendApp) persistFrontendState() {
 	progressRefreshMs := int(a.progressDelay / time.Millisecond)
 	a.mu.RUnlock()
 	state := projectruntime.FrontendState{
-		Version:                1,
-		SelectedBrowser:        menu.SelectedBrowser,
-		FirefoxExecutablePath:  menu.FirefoxExecutablePath,
-		FirefoxInstallRoot:     menu.FirefoxInstallRoot,
-		ChromiumExecutablePath: menu.ChromiumExecutablePath,
-		ChromiumInstallRoot:    menu.ChromiumInstallRoot,
-		PlaywrightDriverDir:    menu.PlaywrightDriverDir,
-		DownloadDir:            projectruntime.RelativizePath(a.workspaceRoot, downloadDir),
-		Concurrency:            concurrency,
-		ProgressRefreshMs:      progressRefreshMs,
-		WindowPlacement:        a.currentWindowPlacement(),
+		Version:               1,
+		SelectedBrowser:       menu.SelectedBrowser,
+		FirefoxExecutablePath: menu.FirefoxExecutablePath,
+		FirefoxInstallRoot:    menu.FirefoxInstallRoot,
+		PlaywrightDriverDir:   menu.PlaywrightDriverDir,
+		DownloadDir:           projectruntime.RelativizePath(a.workspaceRoot, downloadDir),
+		Concurrency:           concurrency,
+		ProgressRefreshMs:     progressRefreshMs,
+		WindowPlacement:       a.currentWindowPlacement(),
 	}
 	if err := projectruntime.SaveFrontendState(a.frontendStatePath, state); err != nil {
 		log.Printf("save frontend state failed: %v", err)
@@ -1042,24 +1032,6 @@ func (a *frontendApp) pickFirefoxExecutable() {
 	a.post(msgRefreshInfo)
 }
 
-func (a *frontendApp) pickChromiumExecutable() {
-	path, err := openFileDialog(a.hwnd, "Select Chromium executable", "Executable Files (*.exe)\x00*.exe\x00All Files (*.*)\x00*.*\x00\x00", a.menuState.ChromiumExecutablePath)
-	if err != nil {
-		a.setStatus("select Chromium executable failed: %v", err)
-		return
-	}
-	if strings.TrimSpace(path) == "" {
-		a.setStatus("Chromium executable unchanged")
-		return
-	}
-	a.mu.Lock()
-	a.menuState = a.menuState.WithChromiumExecutablePath(path)
-	a.mu.Unlock()
-	a.setStatus("Chromium executable set: %s", path)
-	a.persistFrontendState()
-	a.post(msgRefreshInfo)
-}
-
 func (a *frontendApp) pickPlaywrightDriverDir() {
 	path, err := browseFolderDialog(a.hwnd, "Select Playwright driver directory", a.menuState.PlaywrightDriverDir)
 	if err != nil {
@@ -1395,9 +1367,6 @@ func (a *frontendApp) defaultBrowserInstallRoot() string {
 	if strings.TrimSpace(a.menuState.FirefoxInstallRoot) != "" {
 		return a.menuState.FirefoxInstallRoot
 	}
-	if strings.TrimSpace(a.menuState.ChromiumInstallRoot) != "" {
-		return a.menuState.ChromiumInstallRoot
-	}
 	return projectruntime.DefaultFirefoxInstallDir(a.paths.Root)
 }
 
@@ -1425,8 +1394,6 @@ func (a *frontendApp) defaultLegacyHistoryImportPath() string {
 
 func browserTypeLabel(browserType projectruntime.BrowserType) string {
 	switch browserType {
-	case projectruntime.BrowserTypeChromium:
-		return "Chromium"
 	case projectruntime.BrowserTypeFirefox:
 		return "Firefox"
 	default:

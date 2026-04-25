@@ -1,12 +1,12 @@
 # Comic Downloader
 
-一个基于 Go + Playwright 的 Windows 漫画下载器。当前公开主线是 **Firefox + Zeri**：Win32 前端负责添加和管理任务，任务层使用 Playwright 打开页面、解析 Zeri 阅读流、下载图片并生成缩略图。Chromium 仍保留在代码和探针里，主要用于兼容性验证，不作为当前公共 UI 的主入口。
+一个基于 Go + Playwright 的 Windows 漫画下载器。当前项目只保留 **Firefox + Zeri** 路线：Win32 前端负责添加和管理任务，任务层使用 Playwright 打开页面、解析 Zeri 阅读流、下载图片并生成缩略图。
 
 ## 当前状态
 
 - 支持站点：Zeri。
 - 暂不支持站点：`myreadingmanga.info`，前端添加任务时会提示 `暂不支持此站点`。
-- 浏览器路线：公共 UI 默认走 Firefox；Zeri URL 会被任务层强制归一到 Firefox。
+- 浏览器路线：公共 UI 和任务层统一使用 Firefox。
 - 下载流程：摘要页 -> 阅读页 -> `100%` -> 懒加载 -> 下载图片 -> 生成 JPG 缩略图。
 - 缩略图输入支持 `webp`、`avif` 等常见非 JPEG 格式。
 - 任务列表支持虚拟列表、右键菜单、重试、详情、打开下载目录、复制 URL、删除、开始和暂停。
@@ -62,7 +62,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_portable.ps1
 - `COMIC_DOWNLOADER_DOWNLOAD_DIR`：覆盖默认下载目录。
 - `COMIC_DOWNLOADER_FRONTEND_STATE_PATH`：覆盖前端设置文件路径。
 - `COMIC_DOWNLOADER_STATE_PATH`：覆盖旧版历史/任务状态文件路径。
-- `PLAYWRIGHT_BROWSERS_PATH`：Chromium 探针可用的 Playwright 浏览器安装根目录。
+- `COMIC_FIREFOX_PROFILE_SOURCE_DIR`：覆盖 Firefox 源 profile 目录。
 
 ## 运行时目录
 
@@ -89,16 +89,14 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_portable.ps1
 
 ## 浏览器自检页
 
-确认当前浏览器实际使用的 profile：
+确认当前 Firefox 实际使用的 profile：
 
-- Firefox：`about:support`，查看 `Application Basics -> Profile Directory`。
-- Firefox：`about:profiles`，查看当前激活 profile 和所有 profile。
-- Chromium：`chrome://version`，查看 `Profile Path`。
+- `about:support`：查看 `Application Basics -> Profile Directory`。
+- `about:profiles`：查看当前激活 profile 和所有 profile。
 
 ## 文档索引
 
 - [项目审计](docs/PROJECT_AUDIT.md)
-- [手工冒烟测试](docs/SMOKE_TESTS.md)
 - [界面与任务流](docs/INTERFACE_FLOW.md)
 - [浏览器 Profile 流程](docs/browser_profile_flow.md)
 - [Zeri 流程规则](docs/zeri_flow_rules.md)
@@ -107,5 +105,5 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_portable.ps1
 
 - `go test ./...` 已通过。
 - README 里的旧入口 `go run ./cmd/comic-downloader` 已移除，当前入口是 `cmd/win32-frontend`。
-- 公共 UI、任务层和文档都应以 Firefox + Zeri 为当前主线。
-- 仍需后续处理的风险见 [docs/PROJECT_AUDIT.md](docs/PROJECT_AUDIT.md)。
+- 公共 UI、任务层和文档都以 Firefox + Zeri 为当前主线。
+- 旧浏览器兼容代码、探针、运行时脚本和备份目录已清理。

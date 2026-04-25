@@ -15,7 +15,7 @@ const defaultFirefoxUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:14
 
 func main() {
 	url := flag.String("url", "", "url to open")
-	browserType := flag.String("browser-type", "firefox", "browser type to use: firefox or chromium")
+	browserType := flag.String("browser-type", "firefox", "browser type to use: firefox")
 	runtimeRoot := flag.String("runtime-root", "runtime", "runtime root")
 	browserPath := flag.String("browser-path", "", "browser executable path")
 	browsersPath := flag.String("browsers-path", "", "browser install root")

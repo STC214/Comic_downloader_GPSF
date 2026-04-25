@@ -6,7 +6,7 @@ The current authoritative docs are `README.md` and the files under `docs/`.
 ## What is true now
 
 - The public UI is Firefox-first.
-- Chromium implementation details remain in the repository, but Chromium-specific UI entry points are hidden.
+- Browser implementation is Firefox-only for the public UI and task layer.
 - Firefox tasks use a fresh temporary profile per task and clean it on exit.
 - Zeri is the active supported site flow.
 - `myreadingmanga.info` is currently blocked in the frontend task-add flow.

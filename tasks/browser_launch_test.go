@@ -50,26 +50,27 @@ func TestBrowserLaunchRequestBuildsMiddleware(t *testing.T) {
 	}
 }
 
-func TestBrowserLaunchRequestDefaultsChromium(t *testing.T) {
+func TestBrowserLaunchRequestDefaultsUnsupportedBrowserToFirefox(t *testing.T) {
 	workspace := t.TempDir()
 	req := BrowserLaunchRequest{
 		URL:         "https://example.com",
-		BrowserType: "chromium",
+		BrowserType: "unsupported",
 		RuntimeRoot: filepath.Join(workspace, "runtime"),
 	}
 	req = req.Normalize()
-	if req.BrowserType != "chromium" {
-		t.Fatalf("BrowserType = %q, want chromium", req.BrowserType)
+	if req.BrowserType != "firefox" {
+		t.Fatalf("BrowserType = %q, want firefox", req.BrowserType)
 	}
-	wantProfile := filepath.Clean(`C:\Users\stc52\AppData\Local\Google\Chrome for Testing\User Data`)
+	wantProfile := filepath.Clean(`runtime/browser-profiles/baseline-userdata`)
 	if req.ProfileDir != wantProfile {
 		t.Fatalf("ProfileDir = %q, want %q", req.ProfileDir, wantProfile)
 	}
 	if req.UserDataDir != wantProfile {
 		t.Fatalf("UserDataDir = %q, want %q", req.UserDataDir, wantProfile)
 	}
-	if req.BrowserPath != "" {
-		t.Fatalf("BrowserPath = %q, want empty and resolved later", req.BrowserPath)
+	wantBrowserPath := `C:\Program Files\Mozilla Firefox\firefox.exe`
+	if req.BrowserPath != wantBrowserPath {
+		t.Fatalf("BrowserPath = %q, want %q", req.BrowserPath, wantBrowserPath)
 	}
 }
 
@@ -77,7 +78,7 @@ func TestBrowserLaunchRequestForcesFirefoxForZeriURL(t *testing.T) {
 	workspace := t.TempDir()
 	req := BrowserLaunchRequest{
 		URL:         "https://zeri-m.top/index.php?route=comic/article&c_id=1&comic_id=2",
-		BrowserType: "chromium",
+		BrowserType: "unsupported",
 		RuntimeRoot: filepath.Join(workspace, "runtime"),
 	}
 	req = req.Normalize()
@@ -109,15 +110,19 @@ func TestNormalizeTaskURLCollapsesRepeatedPrefixes(t *testing.T) {
 func TestBrowserLaunchRequestUsesFrontendStateDefaults(t *testing.T) {
 	workspace := t.TempDir()
 	runtimeRoot := filepath.Join(workspace, "runtime")
+	browserPath := filepath.Join(workspace, "browsers", "firefox", "firefox.exe")
+	installRoot := filepath.Join(workspace, "browsers", "firefox")
+	driverDir := filepath.Join(workspace, "browsers", "driver")
+	downloadDir := filepath.Join(workspace, "downloads")
 	statePath := projectruntime.DefaultFrontendStatePath(runtimeRoot)
 	if err := os.MkdirAll(filepath.Dir(statePath), 0o755); err != nil {
 		t.Fatalf("create frontend state dir: %v", err)
 	}
 	if err := projectruntime.SaveFrontendState(statePath, projectruntime.FrontendState{
-		FirefoxExecutablePath: `D:\Program\playwright-browsers\firefox-1497\firefox\firefox.exe`,
-		FirefoxInstallRoot:    `D:\Program\playwright-browsers\firefox`,
-		PlaywrightDriverDir:   `D:\Program\playwright-browsers\driver`,
-		DownloadDir:           `F:\Project\comic_downloader_GO_Playwright_stealth\runtime\output`,
+		FirefoxExecutablePath: browserPath,
+		FirefoxInstallRoot:    installRoot,
+		PlaywrightDriverDir:   driverDir,
+		DownloadDir:           downloadDir,
 	}); err != nil {
 		t.Fatalf("save frontend state: %v", err)
 	}
@@ -129,16 +134,16 @@ func TestBrowserLaunchRequestUsesFrontendStateDefaults(t *testing.T) {
 	}
 	req = req.Normalize()
 
-	if req.BrowserPath != `D:\Program\playwright-browsers\firefox-1497\firefox\firefox.exe` {
+	if req.BrowserPath != browserPath {
 		t.Fatalf("BrowserPath = %q, want frontend state firefox path", req.BrowserPath)
 	}
-	if req.DriverDir != `D:\Program\playwright-browsers\driver` {
+	if req.DriverDir != driverDir {
 		t.Fatalf("DriverDir = %q, want frontend state driver dir", req.DriverDir)
 	}
-	if req.DownloadRoot != `F:\Project\comic_downloader_GO_Playwright_stealth\runtime\output` {
+	if req.DownloadRoot != downloadDir {
 		t.Fatalf("DownloadRoot = %q, want frontend state download dir", req.DownloadRoot)
 	}
-	if req.OutputDir != `F:\Project\comic_downloader_GO_Playwright_stealth\runtime\output` {
+	if req.OutputDir != downloadDir {
 		t.Fatalf("OutputDir = %q, want frontend state download dir", req.OutputDir)
 	}
 }

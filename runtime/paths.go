@@ -85,9 +85,10 @@ func DefaultFirefoxProfileDir() string {
 	return filepath.Join(ResolveRuntimeRoot("."), "browser-profiles", "baseline-userdata")
 }
 
-// DefaultFirefoxProfileSourceDir returns the exact Firefox source profile directory selected on this machine.
+// DefaultFirefoxProfileSourceDir returns an optional fixed Firefox source profile.
+// Empty means the resolver should use COMIC_FIREFOX_PROFILE_SOURCE_DIR or profiles.ini discovery.
 func DefaultFirefoxProfileSourceDir() string {
-	return `C:\Users\stc52\AppData\Roaming\Mozilla\Firefox\Profiles\aocfvl86.default-default-3`
+	return ""
 }
 
 // DefaultDownloadDir returns the default persistent download directory for the workspace.

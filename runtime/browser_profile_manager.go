@@ -45,8 +45,6 @@ func (m BrowserProfileManager) SourceProfileDir(browserType BrowserType) (string
 	switch browserType {
 	case BrowserTypeFirefox:
 		return m.Source.ResolveFirefox()
-	case BrowserTypeChromium:
-		return m.Source.ResolveChromium()
 	default:
 		return "", fmt.Errorf("unsupported browser type %q", browserType)
 	}

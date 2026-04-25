@@ -74,9 +74,6 @@ func (r BrowserLaunchRequest) Normalize() BrowserLaunchRequest {
 		r.BrowserType = string(projectruntime.BrowserTypeFirefox)
 	}
 	r.BrowserInstallDir = strings.TrimSpace(r.BrowserInstallDir)
-	if r.BrowserInstallDir == "" && r.BrowserType == string(projectruntime.BrowserTypeChromium) {
-		r.BrowserInstallDir = strings.TrimSpace(os.Getenv("PLAYWRIGHT_BROWSERS_PATH"))
-	}
 	frontendState, hasFrontendState := loadFrontendStateDefaults(r.RuntimeRoot)
 	if strings.TrimSpace(r.DriverDir) == "" {
 		if hasFrontendState && strings.TrimSpace(frontendState.PlaywrightDriverDir) != "" {
@@ -84,11 +81,7 @@ func (r BrowserLaunchRequest) Normalize() BrowserLaunchRequest {
 		}
 	}
 	if strings.TrimSpace(r.DriverDir) == "" {
-		if r.BrowserType == string(projectruntime.BrowserTypeChromium) && strings.TrimSpace(r.BrowserInstallDir) != "" {
-			r.DriverDir = filepath.Join(r.BrowserInstallDir, "driver")
-		} else {
-			r.DriverDir = projectruntime.DefaultPlaywrightDriverDir(r.RuntimeRoot)
-		}
+		r.DriverDir = projectruntime.DefaultPlaywrightDriverDir(r.RuntimeRoot)
 	}
 	selectedProfileDir := strings.TrimSpace(r.ProfileDir)
 	userDataDir := strings.TrimSpace(r.UserDataDir)
@@ -100,33 +93,17 @@ func (r BrowserLaunchRequest) Normalize() BrowserLaunchRequest {
 	}
 	if strings.TrimSpace(r.BrowserPath) == "" {
 		if hasFrontendState {
-			switch projectruntime.BrowserType(r.BrowserType) {
-			case projectruntime.BrowserTypeChromium:
-				if strings.TrimSpace(frontendState.ChromiumExecutablePath) != "" {
-					r.BrowserPath = filepath.Clean(frontendState.ChromiumExecutablePath)
-				}
-			default:
-				if strings.TrimSpace(frontendState.FirefoxExecutablePath) != "" {
-					r.BrowserPath = filepath.Clean(frontendState.FirefoxExecutablePath)
-				}
+			if strings.TrimSpace(frontendState.FirefoxExecutablePath) != "" {
+				r.BrowserPath = filepath.Clean(frontendState.FirefoxExecutablePath)
 			}
 		}
 	}
 	if strings.TrimSpace(r.BrowserPath) == "" {
-		if r.BrowserType != string(projectruntime.BrowserTypeChromium) {
-			r.BrowserPath = defaultExecutablePathForBrowserType(r.RuntimeRoot, r.BrowserType)
-		}
+		r.BrowserPath = defaultExecutablePathForBrowserType(r.RuntimeRoot, r.BrowserType)
 	}
 	if strings.TrimSpace(r.BrowserInstallDir) == "" && hasFrontendState {
-		switch projectruntime.BrowserType(r.BrowserType) {
-		case projectruntime.BrowserTypeChromium:
-			if strings.TrimSpace(frontendState.ChromiumInstallRoot) != "" {
-				r.BrowserInstallDir = filepath.Clean(frontendState.ChromiumInstallRoot)
-			}
-		default:
-			if strings.TrimSpace(frontendState.FirefoxInstallRoot) != "" {
-				r.BrowserInstallDir = filepath.Clean(frontendState.FirefoxInstallRoot)
-			}
+		if strings.TrimSpace(frontendState.FirefoxInstallRoot) != "" {
+			r.BrowserInstallDir = filepath.Clean(frontendState.FirefoxInstallRoot)
 		}
 	}
 	if selectedProfileDir != "" {
@@ -310,64 +287,25 @@ func (r BrowserLaunchRequest) FirefoxMiddleware() browser.FirefoxMiddleware {
 	return middleware
 }
 
-// ChromiumMiddleware builds the chromium browser middleware from the task-level request.
-func (r BrowserLaunchRequest) ChromiumMiddleware() browser.ChromiumMiddleware {
-	r = r.Normalize()
-	middleware := browser.NewChromiumMiddleware(r.URL).
-		WithRuntimeRoot(r.RuntimeRoot).
-		WithBrowserPath(r.BrowserPath).
-		WithBrowserInstallDir(r.BrowserInstallDir).
-		WithDriverDir(r.DriverDir).
-		WithLaunchTimeoutMS(r.LaunchTimeoutMS).
-		WithProfileDir(r.ProfileDir).
-		WithUserDataDir(r.UserDataDir).
-		WithUserAgent(r.UserAgent).
-		WithLocale(r.Locale).
-		WithTimezoneID(r.TimezoneID).
-		WithViewport(r.ViewportWidth, r.ViewportHeight).
-		WithDownloadRoot(r.DownloadRoot).
-		WithOutputDir(r.OutputDir).
-		WithHeadless(r.Headless).
-		WithAdblock(r.Adblock)
-	return middleware
-}
-
 func normalizeBrowserType(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "", string(projectruntime.BrowserTypeFirefox):
 		return string(projectruntime.BrowserTypeFirefox)
-	case string(projectruntime.BrowserTypeChromium):
-		return string(projectruntime.BrowserTypeChromium)
 	default:
 		return string(projectruntime.BrowserTypeFirefox)
 	}
 }
 
 func defaultProfileDirForBrowserType(browserType string) string {
-	switch browserType {
-	case string(projectruntime.BrowserTypeChromium):
-		return projectruntime.DefaultChromiumProfileSourceDir()
-	default:
-		return projectruntime.DefaultFirefoxProfileDir()
-	}
+	return projectruntime.DefaultFirefoxProfileDir()
 }
 
 func defaultExecutablePathForBrowserType(runtimeRoot, browserType string) string {
-	switch browserType {
-	case string(projectruntime.BrowserTypeChromium):
-		return ""
-	default:
-		return projectruntime.DefaultFirefoxExecutablePath(runtimeRoot)
-	}
+	return projectruntime.DefaultFirefoxExecutablePath(runtimeRoot)
 }
 
 func defaultUserAgentForBrowserType(browserType string) string {
-	switch browserType {
-	case string(projectruntime.BrowserTypeChromium):
-		return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
-	default:
-		return defaultFirefoxUserAgent
-	}
+	return defaultFirefoxUserAgent
 }
 
 func workspaceRootFromRuntimeRoot(runtimeRoot string) string {

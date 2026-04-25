@@ -8,8 +8,6 @@ type BrowserType string
 const (
 	// BrowserTypeFirefox is the only supported runtime for the first rewrite pass.
 	BrowserTypeFirefox BrowserType = "firefox"
-	// BrowserTypeChromium identifies the Chromium runtime.
-	BrowserTypeChromium BrowserType = "chromium"
 )
 
 // ScriptRef describes a runtime init script such as firefox_stealth.js.

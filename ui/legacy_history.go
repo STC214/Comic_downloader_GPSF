@@ -283,9 +283,9 @@ func legacyBrowserType(task projectruntime.LegacyComicDownloaderTask) string {
 	worker := strings.ToLower(strings.TrimSpace(task.Worker + " " + task.WorkerSource))
 	switch {
 	case strings.Contains(worker, "myreading"):
-		return string(projectruntime.BrowserTypeChromium)
+		return string(projectruntime.BrowserTypeFirefox)
 	case strings.Contains(worker, "nyahentai"):
-		return string(projectruntime.BrowserTypeChromium)
+		return string(projectruntime.BrowserTypeFirefox)
 	case strings.Contains(worker, "zeri"):
 		return string(projectruntime.BrowserTypeFirefox)
 	default:

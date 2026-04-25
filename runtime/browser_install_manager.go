@@ -124,28 +124,17 @@ func (m BrowserInstallManager) InstallPlaywrightBrowserWithProgress(browserType 
 	}, nil
 }
 
-// InstallPlaywrightBrowsers installs Chromium and Firefox into the same target root.
+// InstallPlaywrightBrowsers installs Firefox into the target root.
 func (m BrowserInstallManager) InstallPlaywrightBrowsers(targetRoot string) (BrowserInstallBatchResult, error) {
 	return m.InstallPlaywrightBrowsersWithProgress(targetRoot, nil)
 }
 
-// InstallPlaywrightBrowsersWithProgress installs Chromium and Firefox into the same target root and reports progress.
+// InstallPlaywrightBrowsersWithProgress installs Firefox into the target root and reports progress.
 func (m BrowserInstallManager) InstallPlaywrightBrowsersWithProgress(targetRoot string, progress func(BrowserInstallProgress)) (BrowserInstallBatchResult, error) {
-	chromium, err := m.InstallPlaywrightBrowserWithProgress(BrowserTypeChromium, targetRoot, func(update BrowserInstallProgress) {
-		if progress == nil {
-			return
-		}
-		update.Fraction *= 0.5
-		progress(update)
-	})
-	if err != nil {
-		return BrowserInstallBatchResult{}, err
-	}
 	firefox, err := m.InstallPlaywrightBrowserWithProgress(BrowserTypeFirefox, targetRoot, func(update BrowserInstallProgress) {
 		if progress == nil {
 			return
 		}
-		update.Fraction = 0.5 + (update.Fraction * 0.5)
 		progress(update)
 	})
 	if err != nil {
@@ -155,15 +144,13 @@ func (m BrowserInstallManager) InstallPlaywrightBrowsersWithProgress(targetRoot 
 		progress(BrowserInstallProgress{Fraction: 0.98, Phase: "apply", Message: "applying installed browsers"})
 	}
 	return BrowserInstallBatchResult{
-		TargetRoot: chromium.TargetRoot,
-		Results:    []BrowserInstallResult{chromium, firefox},
+		TargetRoot: firefox.TargetRoot,
+		Results:    []BrowserInstallResult{firefox},
 	}, nil
 }
 
 func browserInstallName(browserType BrowserType) (string, error) {
 	switch browserType {
-	case BrowserTypeChromium:
-		return "chromium", nil
 	case BrowserTypeFirefox:
 		return "firefox", nil
 	default:
@@ -214,8 +201,6 @@ func ResolveInstalledBrowserExecutable(root string, browserType BrowserType) (st
 
 func browserExecutableNames(browserType BrowserType) []string {
 	switch browserType {
-	case BrowserTypeChromium:
-		return []string{"chrome.exe", "chromium.exe"}
 	case BrowserTypeFirefox:
 		return []string{"firefox.exe"}
 	default:

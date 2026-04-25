@@ -162,27 +162,6 @@ func TestBrowserProfileManagerPreparesPlaywrightProfileFromSource(t *testing.T) 
 	}
 }
 
-func TestBrowserProfileManagerSourceProfileDirChromium(t *testing.T) {
-	workspace := t.TempDir()
-	localAppData := filepath.Join(workspace, "AppData", "Local")
-	t.Setenv("LOCALAPPDATA", localAppData)
-	t.Setenv("APPDATA", filepath.Join(workspace, "AppData", "Roaming"))
-
-	sourceDir := filepath.Join(localAppData, "Google", "Chrome for Testing", "User Data")
-	if err := os.MkdirAll(filepath.Join(sourceDir, "Default"), 0o755); err != nil {
-		t.Fatalf("create chromium source dir: %v", err)
-	}
-
-	manager := NewBrowserProfileManager(workspace)
-	got, err := manager.SourceProfileDir(BrowserTypeChromium)
-	if err != nil {
-		t.Fatalf("SourceProfileDir(chromium) error = %v", err)
-	}
-	if got != filepath.Clean(sourceDir) {
-		t.Fatalf("SourceProfileDir(chromium) = %q, want %q", got, sourceDir)
-	}
-}
-
 func TestBrowserProfileManagerRefreshProjectProfileFromSource(t *testing.T) {
 	workspace := t.TempDir()
 	appData := filepath.Join(workspace, "AppData", "Roaming")

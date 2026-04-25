@@ -17,8 +17,4 @@ func TestDefaultBrowserMenuStateIncludesFirefoxPaths(t *testing.T) {
 	if menu.FirefoxInstallRoot != wantFirefoxInstall {
 		t.Fatalf("FirefoxInstallRoot = %q, want %q", menu.FirefoxInstallRoot, wantFirefoxInstall)
 	}
-	wantChromiumInstall := filepath.Clean(`runtime/playwright-browsers/chromium`)
-	if menu.ChromiumInstallRoot != wantChromiumInstall {
-		t.Fatalf("ChromiumInstallRoot = %q, want %q", menu.ChromiumInstallRoot, wantChromiumInstall)
-	}
 }

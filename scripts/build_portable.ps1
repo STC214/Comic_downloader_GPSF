@@ -1,8 +1,7 @@
 param(
     [string]$PortableExe = (Join-Path $PSScriptRoot "..\dist\portable.exe"),
     [string]$PortableStageRoot = (Join-Path $PSScriptRoot "..\dist\portable_stage"),
-    [string]$ChromeForTestingRoot = "D:\Program\playwright-browsers",
-    [string]$FirefoxExecutable = "D:\Program\playwright-browsers\firefox-1497\firefox\firefox.exe"
+    [string]$FirefoxExecutable = "C:\Program Files\Mozilla Firefox\firefox.exe"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -106,7 +105,6 @@ Ensure-Dir (Split-Path -Parent $PortableStageRoot)
 
 Write-Host "Portable exe: $PortableExe"
 Write-Host "Portable stage root: $PortableStageRoot"
-Write-Host "Chrome for Testing root: $ChromeForTestingRoot"
 Write-Host "Firefox executable: $FirefoxExecutable"
 
 if (Test-Path -LiteralPath $PortableStageRoot) {
@@ -167,7 +165,6 @@ if ($LASTEXITCODE -ne 0) {
     throw "go build failed"
 }
 
-Copy-IfExists (Join-Path $repoRoot "runtime\chrome_stealth.js") (Join-Path $packageRuntimeRoot "chrome_stealth.js")
 Copy-IfExists (Join-Path $repoRoot "runtime\firefox_stealth.js") (Join-Path $packageRuntimeRoot "firefox_stealth.js")
 Copy-IfExists (Join-Path $repoRoot "adblock\AWAvenue-Ads-Rule.txt") (Join-Path $packageAdblockRoot "AWAvenue-Ads-Rule.txt")
 Copy-File $iconSysoPath $frontendSysoPath
@@ -177,8 +174,7 @@ Comic Downloader Portable Payload
 
 This directory is packed into the single-file portable launcher.
 
-- Playwright browsers root: $ChromeForTestingRoot
-- Playwright driver: $ChromeForTestingRoot\driver
+- Firefox executable: $FirefoxExecutable
 
 The launcher extracts this payload to a temp directory at runtime.
 "@

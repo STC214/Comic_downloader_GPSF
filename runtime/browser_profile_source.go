@@ -11,18 +11,18 @@ import (
 
 // BrowserProfileSourceResolver resolves the actual user-owned browser profile directories.
 type BrowserProfileSourceResolver struct {
-	AppData               string
-	LocalAppData          string
-	FirefoxDir            string
+	AppData                string
+	LocalAppData           string
+	FirefoxDir             string
 	DisableFixedFirefoxDir bool
 }
 
 // NewBrowserProfileSourceResolver builds a resolver from the current process environment.
 func NewBrowserProfileSourceResolver() BrowserProfileSourceResolver {
 	return BrowserProfileSourceResolver{
-		AppData:               strings.TrimSpace(os.Getenv("APPDATA")),
-		LocalAppData:          strings.TrimSpace(os.Getenv("LOCALAPPDATA")),
-		FirefoxDir:            strings.TrimSpace(os.Getenv("COMIC_FIREFOX_PROFILE_SOURCE_DIR")),
+		AppData:                strings.TrimSpace(os.Getenv("APPDATA")),
+		LocalAppData:           strings.TrimSpace(os.Getenv("LOCALAPPDATA")),
+		FirefoxDir:             strings.TrimSpace(os.Getenv("COMIC_FIREFOX_PROFILE_SOURCE_DIR")),
 		DisableFixedFirefoxDir: envTruthy("COMIC_FIREFOX_DISABLE_FIXED_SOURCE"),
 	}
 }
@@ -66,22 +66,6 @@ func envTruthy(name string) bool {
 	default:
 		return false
 	}
-}
-
-// ResolveChromium returns the actual Chromium profile directory on the local machine.
-func (r BrowserProfileSourceResolver) ResolveChromium() (string, error) {
-	if strings.TrimSpace(r.LocalAppData) == "" {
-		return "", errors.New("local appdata is empty")
-	}
-	path := filepath.Join(r.LocalAppData, "Google", "Chrome for Testing", "User Data")
-	info, err := os.Stat(path)
-	if err != nil {
-		return "", fmt.Errorf("stat chromium profile %q: %w", path, err)
-	}
-	if !info.IsDir() {
-		return "", fmt.Errorf("chromium profile %q is not a directory", path)
-	}
-	return path, nil
 }
 
 type firefoxProfileEntry struct {

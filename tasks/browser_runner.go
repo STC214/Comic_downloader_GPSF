@@ -192,20 +192,11 @@ func RunBrowserRequest(req BrowserLaunchRequest) (BrowserRunResult, error) {
 }
 
 func openTaskBrowserSession(req BrowserLaunchRequest) (taskBrowserSession, error) {
-	switch projectruntime.BrowserType(req.BrowserType) {
-	case projectruntime.BrowserTypeChromium:
-		session, err := req.ChromiumMiddleware().Open(req.BrowserOptions())
-		if err != nil {
-			return nil, err
-		}
-		return session, nil
-	default:
-		session, err := req.FirefoxMiddleware().Open(req.BrowserOptions())
-		if err != nil {
-			return nil, err
-		}
-		return session, nil
+	session, err := req.FirefoxMiddleware().Open(req.BrowserOptions())
+	if err != nil {
+		return nil, err
 	}
+	return session, nil
 }
 
 type taskBrowserSession interface {

@@ -25,18 +25,16 @@ type FrontendWindowPlacement struct {
 
 // FrontendState stores the persistent settings used by the current frontend.
 type FrontendState struct {
-	Version                int                     `json:"version"`
-	SavedAt                time.Time               `json:"savedAt"`
-	SelectedBrowser        string                  `json:"selectedBrowser,omitempty"`
-	FirefoxExecutablePath  string                  `json:"firefoxExecutablePath,omitempty"`
-	FirefoxInstallRoot     string                  `json:"firefoxInstallRoot,omitempty"`
-	ChromiumExecutablePath string                  `json:"chromiumExecutablePath,omitempty"`
-	ChromiumInstallRoot    string                  `json:"chromiumInstallRoot,omitempty"`
-	PlaywrightDriverDir    string                  `json:"playwrightDriverDir,omitempty"`
-	DownloadDir            string                  `json:"downloadDir,omitempty"`
-	Concurrency            int                     `json:"concurrency,omitempty"`
-	ProgressRefreshMs      int                     `json:"progressRefreshMs,omitempty"`
-	WindowPlacement        FrontendWindowPlacement `json:"windowPlacement,omitempty"`
+	Version               int                     `json:"version"`
+	SavedAt               time.Time               `json:"savedAt"`
+	SelectedBrowser       string                  `json:"selectedBrowser,omitempty"`
+	FirefoxExecutablePath string                  `json:"firefoxExecutablePath,omitempty"`
+	FirefoxInstallRoot    string                  `json:"firefoxInstallRoot,omitempty"`
+	PlaywrightDriverDir   string                  `json:"playwrightDriverDir,omitempty"`
+	DownloadDir           string                  `json:"downloadDir,omitempty"`
+	Concurrency           int                     `json:"concurrency,omitempty"`
+	ProgressRefreshMs     int                     `json:"progressRefreshMs,omitempty"`
+	WindowPlacement       FrontendWindowPlacement `json:"windowPlacement,omitempty"`
 }
 
 // ResolveFrontendStatePath resolves the frontend settings file path.

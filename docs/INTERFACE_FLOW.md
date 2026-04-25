@@ -78,17 +78,16 @@ It preserves the original task order, URL, title, output paths, timestamps, thum
 - The browser layer resolves a launch spec before launch.
 - The launch spec includes browser type, browser path, install root, driver dir, temporary profile path, headless, keep-open, locale, timezone, viewport, and user-agent.
 - Firefox task runs currently use a fresh temporary Playwright profile per task.
-- Chromium support remains in the codebase for internal/probe use, but the public UI no longer exposes Chromium-specific controls or mother-profile pickers.
+- The public UI and task layer use Firefox.
 - The browser session boundary uses Playwright persistent context with a fresh temporary profile directory when the route needs one.
 - Browser middleware owns stealth injection, Firefox user prefs, adblock loading, and launch defaults.
-- The `task-probe` and `chromium-probe` CLIs remain the current browser smoke-test entry points.
+- The `task-probe` CLI remains the current browser smoke-test entry point.
 - The `zeri` summary/reader contract is documented in [`docs/zeri_flow_rules.md`](zeri_flow_rules.md).
 
 ## Browser mother profiles and temp profiles
 
 - Firefox tasks no longer reuse the saved mother profile directly in the task runner.
 - Firefox tasks launch from a fresh temporary profile and clean it when the task ends or is interrupted.
-- Chromium probes also launch from a fresh temporary Playwright profile by default, so task and probe runs do not depend on a copied mother profile.
 - Task cleanup removes the whole task profile root, including task-scoped temporary profile copies.
 - Frontend add-task requests now send only the URL and runtime root; the task layer fills browser defaults from the saved frontend state snapshot when available, and the frontend no longer blocks task creation with a local browser-path precheck.
 
@@ -103,9 +102,6 @@ It preserves the original task order, URL, title, output paths, timestamps, thum
 
 When you need to verify the exact profile directory used by a run, use these built-in pages:
 
-- `chrome://version`
-  - Best for Chromium and Chromium-based probes.
-  - Confirm the `Profile Path` field points at the expected temporary task profile.
 - `about:support`
   - Best for Firefox probes.
   - Confirm `Application Basics -> Profile Directory` points at the expected temporary task profile.
