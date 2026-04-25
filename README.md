@@ -1,130 +1,111 @@
 # Comic Downloader
 
-这是一个基于 Go + Playwright 的 Windows 漫画下载器。
-当前项目的公开主线已经收敛为 **Firefox + Zeri**，Chromium 仅保留在代码和探针里用于兼容性测试，不再作为前端公开入口。
+一个基于 Go + Playwright 的 Windows 漫画下载器。当前公开主线是 **Firefox + Zeri**：Win32 前端负责添加和管理任务，任务层使用 Playwright 打开页面、解析 Zeri 阅读流、下载图片并生成缩略图。Chromium 仍保留在代码和探针里，主要用于兼容性验证，不作为当前公共 UI 的主入口。
 
 ## 当前状态
 
-- 前端“添加任务”会直接创建任务，不再进入等待队列。
-- 重复任务会提示确认，重复判断按 `URL + browser type`。
-- `myreadingmanga.info` 在前端添加任务时会直接提示“暂不支持此站点”并跳过。
-- Zeri 任务使用 Firefox 路线，流程为：摘要页 -> 阅读页 -> `100%` -> 懒加载 -> 下载。
-- 下载完成后会生成竖版 JPG 缩略图，并显示在任务卡片上。
-- 缩略图输入支持 `webp`、`avif` 等常见的非 JPEG 格式。
-- 前端会保存当前设置和窗口位置。
-- 便携版是单文件 `portable.exe`，运行时数据保存在 `portable-data/`。
-- 任务列表使用虚拟列表，适合几千条任务同时显示。
-- 任务卡片优先显示漫画标题，而不是站点名或无头标签。
-- 打包时会把图标嵌入 exe、本地窗口标题栏和任务栏图标。
+- 支持站点：Zeri。
+- 暂不支持站点：`myreadingmanga.info`，前端添加任务时会提示 `暂不支持此站点`。
+- 浏览器路线：公共 UI 默认走 Firefox；Zeri URL 会被任务层强制归一到 Firefox。
+- 下载流程：摘要页 -> 阅读页 -> `100%` -> 懒加载 -> 下载图片 -> 生成 JPG 缩略图。
+- 缩略图输入支持 `webp`、`avif` 等常见非 JPEG 格式。
+- 任务列表支持虚拟列表、右键菜单、重试、详情、打开下载目录、复制 URL、删除、开始和暂停。
+- 便携版是单文件 `dist\portable.exe`，持久数据写入同级 `portable-data\`。
 
-## 运行方式
+## 快速开始
+
+运行测试：
 
 ```powershell
 go test ./...
-go run ./cmd/comic-downloader
 ```
 
-便携版：
+运行 Win32 前端：
+
+```powershell
+go run -tags playwright ./cmd/win32-frontend
+```
+
+运行任务探针：
+
+```powershell
+go run -tags playwright ./cmd/task-probe -url "https://www.zerobywzip.com/..." -keep-open=false
+```
+
+运行便携版：
 
 ```powershell
 dist\portable.exe
 ```
 
-## 当前浏览器路径
+重新构建便携版：
 
-本机默认使用的 Playwright 浏览器路径：
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build_portable.ps1
+```
 
-- `D:\Program\playwright-browsers`
+## 运行环境
 
-Playwright driver 目录：
+- Go：`go.mod` 声明 `go 1.24.0`。
+- 平台：Windows。主前端使用 Win32 API，并带有 `//go:build windows`。
+- Playwright：通过 `github.com/playwright-community/playwright-go` 调用。
+- 默认 Firefox 可执行文件：`C:\Program Files\Mozilla Firefox\firefox.exe`。
+- 默认 Playwright 浏览器根目录：`runtime\playwright-browsers\`。
+- 默认 Playwright driver 目录：`runtime\playwright-browsers\driver\`。
 
-- `D:\Program\playwright-browsers\driver`
+本地开发时可以在前端菜单中设置 Firefox 可执行文件和 Playwright driver 目录。任务启动时也会读取已保存的前端状态。
 
-Firefox 自检页：
+## 常用环境变量
 
-- `about:support`
-- `about:profiles`
-
-Chromium / Chrome for Testing 自检页：
-
-- `chrome://version`
+- `COMIC_DOWNLOADER_WORKSPACE_ROOT`：覆盖工作区根目录，便携启动器会把它设为 `portable-data\`。
+- `COMIC_DOWNLOADER_RUNTIME_ROOT`：覆盖运行时根目录。
+- `COMIC_DOWNLOADER_DOWNLOAD_DIR`：覆盖默认下载目录。
+- `COMIC_DOWNLOADER_FRONTEND_STATE_PATH`：覆盖前端设置文件路径。
+- `COMIC_DOWNLOADER_STATE_PATH`：覆盖旧版历史/任务状态文件路径。
+- `PLAYWRIGHT_BROWSERS_PATH`：Chromium 探针可用的 Playwright 浏览器安装根目录。
 
 ## 运行时目录
 
-普通工作区运行时目录：
+普通工作区默认写入 `runtime\`：
 
-- `runtime/tasks/task-<id>/state.json`
-- `runtime/tasks/task-<id>/report.json`
-- `runtime/logs/task-<id>.log`
-- `runtime/output/task-<id>/`
-- `runtime/thumbnails/task-<id>/thumb.jpg`
-- `runtime/browser-profiles/`
+- `runtime\tasks\task-<id>\report.json`
+- `runtime\logs\task-<id>.log`
+- `runtime\output\`
+- `runtime\thumbnails\task-<id>\thumb.jpg`
+- `runtime\browser-profiles\`
+- `runtime\frontend_state.json`
 
-Each finished task also persists a report file at:
+便携版默认写入 `portable-data\`：
 
-- `runtime/tasks/task-<id>/report.json`
+- `portable-data\tasks\task-<id>\report.json`
+- `portable-data\logs\`
+- `portable-data\output\`
+- `portable-data\thumbnails\`
+- `portable-data\browser-profiles\`
+- `portable-data\frontend_state.json`
+- `portable-data\comic_downloader_state.json`
 
-单文件便携版的持久数据目录：
-
-- `portable-data/`
-
-便携版会把状态、日志、历史、任务、缩略图和下载结果都放到 `portable-data/` 下，并且把临时解包目录也放在 `portable-data/` 内，退出时自动清理。
-便携版任务报告会写到 `portable-data/tasks/task-<id>/report.json`，缩略图会写到 `portable-data/thumbnails/task-<id>/thumb.jpg`。
-
-## 前端功能
-
-- 顶部菜单支持：
-  - 设置 Firefox 可执行文件
-  - 设置 Playwright driver 目录
-  - 安装浏览器
-  - 导入历史记录
-  - 保存当前设置和窗口位置
-- 下载目录、浏览器目录、历史文件选择都使用 Windows 资源管理器风格的目录选择框。
-- 任务卡片支持：
-  - 右键菜单
-  - 重试
-  - 详情
-  - 打开下载目录
-  - 复制任务 URL
-  - 删除
-  - 开始
-  - 暂停
-- 任务列表支持 Explorer 风格选中和 `Ctrl` 多选。
-- 前端添加任务后会立即清空 URL 输入框。
-
-## 历史记录导入
-
-前端可导入旧项目 `D:\tools\crawler_NH\20260410_Final01` 生成的历史记录。
-
-导入时会：
-
-- 先预览新增条数和重复条数
-- 只追加非重复任务
-- 按 URL 去重
-- 保留漫画标题、输出目录、状态和缩略图信息
+便携启动器会把内部载荷解包到 `portable-data\payload-*`，退出后清理临时解包目录。
 
 ## 浏览器自检页
 
-下面几个页面最适合确认当前浏览器实际使用的 profile：
+确认当前浏览器实际使用的 profile：
 
-- `chrome://version`
-  - Chromium / Chrome for Testing
-  - 看 `Profile Path`
-- `about:support`
-  - Firefox
-  - 看 `Application Basics -> Profile Directory`
-- `about:profiles`
-  - Firefox
-  - 看当前激活的 profile 和所有 profile 列表
+- Firefox：`about:support`，查看 `Application Basics -> Profile Directory`。
+- Firefox：`about:profiles`，查看当前激活 profile 和所有 profile。
+- Chromium：`chrome://version`，查看 `Profile Path`。
 
-## 说明
+## 文档索引
 
-- 当前公共 UI 以 Firefox 路线为主。
-- Chromium 仍保留在代码中，主要用于内部探针和后续兼容性工作。
-- 便携版的持久状态现在以 `portable-data/` 为根目录，不再依赖临时解包目录。
-## Progress refresh interval
+- [项目审计](docs/PROJECT_AUDIT.md)
+- [手工冒烟测试](docs/SMOKE_TESTS.md)
+- [界面与任务流](docs/INTERFACE_FLOW.md)
+- [浏览器 Profile 流程](docs/browser_profile_flow.md)
+- [Zeri 流程规则](docs/zeri_flow_rules.md)
 
-- The Win32 frontend exposes a `Set progress refresh interval...` menu item.
-- The value is stored in the frontend state and restored on next launch.
-- It controls how often fast task progress updates are coalesced before the task board redraws.
-- Default: `80ms`.
+## 当前审计摘要
+
+- `go test ./...` 已通过。
+- README 里的旧入口 `go run ./cmd/comic-downloader` 已移除，当前入口是 `cmd/win32-frontend`。
+- 公共 UI、任务层和文档都应以 Firefox + Zeri 为当前主线。
+- 仍需后续处理的风险见 [docs/PROJECT_AUDIT.md](docs/PROJECT_AUDIT.md)。
