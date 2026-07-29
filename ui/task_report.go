@@ -29,7 +29,7 @@ func SaveTaskReport(runtimeRoot string, item TodoItem) error {
 	if err := os.MkdirAll(filepath.Dir(reportPath), 0o755); err != nil {
 		return fmt.Errorf("create task report dir %q: %w", filepath.Dir(reportPath), err)
 	}
-	if err := os.WriteFile(reportPath, data, 0o644); err != nil {
+	if err := projectruntime.WriteFileAtomic(reportPath, data, 0o644); err != nil {
 		return fmt.Errorf("write task report %q: %w", reportPath, err)
 	}
 	if err := writeTaskLog(report, data, paths.TaskLogPath(item.ID)); err != nil {
@@ -38,7 +38,8 @@ func SaveTaskReport(runtimeRoot string, item TodoItem) error {
 	return nil
 }
 
-// CleanupTaskLog removes the human-readable task log for one task.
+// CleanupTaskLog removes a task log when an explicit artifact cleanup requests it.
+// Successful runs retain their logs for diagnosis.
 func CleanupTaskLog(runtimeRoot, taskID string) error {
 	runtimeRoot = strings.TrimSpace(runtimeRoot)
 	if runtimeRoot == "" {
@@ -91,7 +92,7 @@ func writeTaskLog(report tasks.TaskReport, reportJSON []byte, logPath string) er
 	b.WriteString("\n\nJSON Snapshot:\n")
 	b.Write(reportJSON)
 	b.WriteString("\n")
-	if err := os.WriteFile(logPath, []byte(b.String()), 0o644); err != nil {
+	if err := projectruntime.WriteFileAtomic(logPath, []byte(b.String()), 0o644); err != nil {
 		return fmt.Errorf("write task log %q: %w", logPath, err)
 	}
 	return nil

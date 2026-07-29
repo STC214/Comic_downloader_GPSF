@@ -132,11 +132,13 @@ func cleanDownloadDirCandidate(raw string) (string, bool) {
 // RelativizePath returns path relative to base when path is inside base.
 // If the path cannot be safely relativized, the cleaned original path is returned.
 func RelativizePath(base, path string) string {
-	base = filepath.Clean(strings.TrimSpace(base))
-	path = filepath.Clean(strings.TrimSpace(path))
+	base = strings.TrimSpace(base)
+	path = strings.TrimSpace(path)
 	if path == "" {
 		return ""
 	}
+	base = filepath.Clean(base)
+	path = filepath.Clean(path)
 	if base == "" || !filepath.IsAbs(base) || !filepath.IsAbs(path) {
 		return path
 	}
@@ -153,11 +155,13 @@ func RelativizePath(base, path string) string {
 // ResolvePath returns an absolute path when path is relative to base.
 // Absolute paths are returned cleaned as-is.
 func ResolvePath(base, path string) string {
-	base = filepath.Clean(strings.TrimSpace(base))
-	path = filepath.Clean(strings.TrimSpace(path))
+	base = strings.TrimSpace(base)
+	path = strings.TrimSpace(path)
 	if path == "" {
 		return ""
 	}
+	base = filepath.Clean(base)
+	path = filepath.Clean(path)
 	if filepath.IsAbs(path) || base == "" {
 		return path
 	}

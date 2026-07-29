@@ -32,7 +32,7 @@ func IsZeriURL(raw string) bool {
 		return false
 	}
 	host := strings.ToLower(strings.TrimSpace(parsed.Hostname()))
-	return strings.Contains(host, "zeri-m.top") || strings.Contains(host, "zeri")
+	return host == "zeri-m.top" || strings.HasSuffix(host, ".zeri-m.top")
 }
 
 // Execute resolves the summary page, navigates to the reader page, and parses reader content.

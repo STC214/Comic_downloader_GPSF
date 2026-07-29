@@ -3,6 +3,7 @@
 package browser
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -157,7 +158,10 @@ func openFirefoxSession(m FirefoxMiddleware, opts BrowserSessionOptions) (*Firef
 	if strings.TrimSpace(targetURL) == "" {
 		targetURL = m.URL()
 	}
-	if _, err := page.Goto(targetURL); err != nil {
+	if _, err := page.Goto(targetURL, playwright.PageGotoOptions{
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+		Timeout:   playwright.Float(60000),
+	}); err != nil {
 		_ = page.Close()
 		_ = context.Close()
 		_ = pw.Stop()
@@ -251,7 +255,10 @@ func sessionGoto(s *FirefoxSession, url string) error {
 	if !ok || page == nil {
 		return errors.New("browser session page is not a playwright.Page")
 	}
-	if _, err := page.Goto(url); err != nil {
+	if _, err := page.Goto(url, playwright.PageGotoOptions{
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+		Timeout:   playwright.Float(60000),
+	}); err != nil {
 		return err
 	}
 	s.URL = url
@@ -295,7 +302,7 @@ func sessionLoadLazyContentForCount(s *FirefoxSession, expectedImageCount int) e
 			const images = Array.from(document.images || []);
 			const total = images.length;
 			const loaded = images.filter(img => img.complete && img.naturalWidth > 0).length;
-			const target = expected > 0 ? Math.min(expected, total) : total;
+			const target = expected > 0 ? expected : total;
 			return { total, loaded, target, allLoaded: total > 0 && loaded === total };
 		};
 		const scrollTop = () => window.scrollTo(0, 0);
@@ -320,12 +327,12 @@ func sessionLoadLazyContentForCount(s *FirefoxSession, expectedImageCount int) e
 		};
 		for (let i = 0; i < 60; i++) {
 			const stats = imageStats();
-			if (stats.target > 0 && stats.loaded >= stats.target) {
+			if (expected > 0 && stats.total >= stats.target && stats.loaded >= stats.target) {
 				scrollTop();
 				await sleep(150);
 				return stats;
 			}
-			if (stats.target <= 0 && stats.allLoaded) {
+			if (expected <= 0 && stats.allLoaded) {
 				scrollTop();
 				await sleep(150);
 				return stats;
@@ -355,6 +362,73 @@ func sessionLoadLazyContentForCount(s *FirefoxSession, expectedImageCount int) e
 		}
 	}
 	return nil
+}
+
+func sessionImageRecords(s *FirefoxSession) ([]PageImageRecord, error) {
+	if s == nil {
+		return nil, errors.New("browser session is nil")
+	}
+	page, ok := s.Page.(playwright.Page)
+	if !ok || page == nil {
+		return nil, errors.New("browser session page is not a playwright.Page")
+	}
+	result, err := page.Evaluate(`() => JSON.stringify(Array.from(document.images || []).map((img) => ({
+		src: img.currentSrc || img.src || img.getAttribute('data-src') || img.getAttribute('data-original') || img.getAttribute('data-lazy-src') || img.getAttribute('data-url') || '',
+		attrWidth: parseInt(img.getAttribute('width') || '0', 10) || 0,
+		attrHeight: parseInt(img.getAttribute('height') || '0', 10) || 0,
+		naturalWidth: img.naturalWidth || 0,
+		naturalHeight: img.naturalHeight || 0,
+		offsetWidth: img.offsetWidth || 0,
+		offsetHeight: img.offsetHeight || 0,
+		clientWidth: img.clientWidth || 0,
+		clientHeight: img.clientHeight || 0,
+		rectWidth: Math.round(img.getBoundingClientRect().width || 0),
+		rectHeight: Math.round(img.getBoundingClientRect().height || 0),
+		complete: !!img.complete,
+		alt: img.alt || '',
+		className: img.className || '',
+		id: img.id || '',
+		loading: img.loading || ''
+	})))`)
+	if err != nil {
+		return nil, err
+	}
+	raw, ok := result.(string)
+	if !ok {
+		return nil, fmt.Errorf("image records returned %T", result)
+	}
+	var records []PageImageRecord
+	if err := json.Unmarshal([]byte(raw), &records); err != nil {
+		return nil, fmt.Errorf("decode image records: %w", err)
+	}
+	return records, nil
+}
+
+func sessionLoadLazyContentInSelector(s *FirefoxSession, selector string) error {
+	if s == nil {
+		return errors.New("browser session is nil")
+	}
+	page, ok := s.Page.(playwright.Page)
+	if !ok || page == nil {
+		return errors.New("browser session page is not a playwright.Page")
+	}
+	selector = strings.TrimSpace(selector)
+	if selector == "" {
+		return errors.New("lazy selector is empty")
+	}
+	found, err := page.Evaluate(`(selector) => {
+		const root = document.querySelector(selector);
+		if (!root) return false;
+		root.scrollIntoView({block: 'start'});
+		return true;
+	}`, selector)
+	if err != nil {
+		return err
+	}
+	if exists, _ := found.(bool); !exists {
+		return fmt.Errorf("lazy selector %q not found", selector)
+	}
+	return sessionLoadLazyContentForCount(s, 0)
 }
 
 func asFloat64(value any) float64 {

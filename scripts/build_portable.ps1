@@ -157,10 +157,8 @@ if (Test-Path -LiteralPath $iconSource) {
     throw "icon source image not found and existing icon syso missing: $iconSource"
 }
 
-& go test ./...
-if ($LASTEXITCODE -ne 0) {
-    throw "go test failed"
-}
+& (Join-Path $PSScriptRoot "run_tests_bounded.ps1")
+& (Join-Path $PSScriptRoot "run_tests_bounded.ps1") -Playwright
 
 & go build -tags playwright -ldflags "-H windowsgui -X main.buildVersion=$buildVersion" -o (Join-Path $PortableStageRoot "comic_downloader.exe") .\cmd\win32-frontend
 if ($LASTEXITCODE -ne 0) {

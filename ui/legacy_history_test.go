@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,72 @@ import (
 	projectruntime "comic_downloader_go_playwright_stealth/runtime"
 	"comic_downloader_go_playwright_stealth/tasks"
 )
+
+func TestLoadLegacyComicDownloaderHistoryIsReadOnly(t *testing.T) {
+	root := t.TempDir()
+	runtimeRoot := filepath.Join(root, "runtime")
+	statePath := filepath.Join(root, "comic_downloader_state.json")
+	state := projectruntime.LegacyComicDownloaderState{
+		NextTaskID: 2,
+		Tasks: []projectruntime.LegacyComicDownloaderTask{{
+			ID:        1,
+			URL:       "https://example.com/gallery/1",
+			Title:     "one",
+			State:     "completed",
+			Percent:   1,
+			CreatedAt: time.Unix(100, 0).UTC(),
+			UpdatedAt: time.Unix(200, 0).UTC(),
+		}},
+	}
+	if err := projectruntime.SaveLegacyComicDownloaderState(statePath, state); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	list := NewTodoList()
+	list.SetRuntimeRoot(runtimeRoot)
+	count, err := list.LoadLegacyComicDownloaderHistory(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("LoadLegacyComicDownloaderHistory() count = %d, want 1", count)
+	}
+	after, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(after, before) {
+		t.Fatal("startup history load rewrote the source state")
+	}
+	if _, err := os.Stat(filepath.Join(runtimeRoot, "tasks")); !os.IsNotExist(err) {
+		t.Fatalf("startup history load created task reports: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(runtimeRoot, "logs")); !os.IsNotExist(err) {
+		t.Fatalf("startup history load created task logs: %v", err)
+	}
+}
+
+func TestImportLegacyComicDownloaderStateAssignsUniqueIDsOnCollision(t *testing.T) {
+	list := NewTodoList()
+	count := list.ImportLegacyComicDownloaderState(projectruntime.LegacyComicDownloaderState{
+		NextTaskID: 42,
+		Tasks: []projectruntime.LegacyComicDownloaderTask{
+			{ID: 41, URL: "https://example.com/a"},
+			{ID: 41, URL: "https://example.com/b"},
+		},
+	})
+	if count != 2 {
+		t.Fatalf("ImportLegacyComicDownloaderState() count = %d, want 2", count)
+	}
+	items := list.Items()
+	if len(items) != 2 || items[0].ID == items[1].ID {
+		t.Fatalf("imported IDs are not unique: %#v", []string{items[0].ID, items[1].ID})
+	}
+}
 
 func TestImportLegacyComicDownloaderState(t *testing.T) {
 	list := NewTodoList()
@@ -62,15 +129,18 @@ func TestImportLegacyComicDownloaderState(t *testing.T) {
 
 func TestExportLegacyComicDownloaderState(t *testing.T) {
 	list := NewTodoList()
+	runtimeRoot := t.TempDir()
 	list.AddPending(tasks.BrowserLaunchRequest{
 		URL:          "https://example.com/a",
 		BrowserType:  "firefox",
 		DownloadRoot: "F:/downloads",
+		RuntimeRoot:  runtimeRoot,
 	})
 	item, err := list.RunImmediately(tasks.BrowserLaunchRequest{
 		URL:          "https://example.com/b",
 		BrowserType:  "firefox",
 		DownloadRoot: "F:/downloads",
+		RuntimeRoot:  runtimeRoot,
 	}, func(req tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error) {
 		return tasks.BrowserRunResult{
 			URL:             req.URL,

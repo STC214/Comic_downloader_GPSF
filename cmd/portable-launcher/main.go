@@ -38,7 +38,9 @@ func run() error {
 		return fmt.Errorf("resolve launcher executable: %w", err)
 	}
 	launcherRoot := filepath.Dir(launcherExe)
-	portableDataRoot := defaultEnv("COMIC_DOWNLOADER_WORKSPACE_ROOT", filepath.Join(launcherRoot, "portable-data"))
+	// Portable metadata belongs to the launcher, not to the shell that happened
+	// to start it. Thumbnails therefore always remain beside the executable.
+	portableDataRoot := filepath.Join(launcherRoot, "portable-data")
 	if err := os.MkdirAll(portableDataRoot, 0o755); err != nil {
 		return fmt.Errorf("create portable data root: %w", err)
 	}
@@ -59,7 +61,11 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("create temp root: %w", err)
 	}
-	defer os.RemoveAll(tempRoot)
+	defer func() {
+		if err := removeAllWithRetry(tempRoot, 8, 250*time.Millisecond); err != nil {
+			log.Printf("remove portable payload %q failed: %v", tempRoot, err)
+		}
+	}()
 
 	if err := unzipPayload(payloadZip, tempRoot); err != nil {
 		return fmt.Errorf("extract portable payload: %w", err)
@@ -79,16 +85,7 @@ func run() error {
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 	playwrightRoot := filepath.Join(portableDataRoot, "playwright-browsers")
-	cmd.Env = append(os.Environ(),
-		"PLAYWRIGHT_BROWSERS_PATH="+defaultEnv("PLAYWRIGHT_BROWSERS_PATH", playwrightRoot),
-		"PLAYWRIGHT_DRIVER_PATH="+defaultEnv("PLAYWRIGHT_DRIVER_PATH", filepath.Join(playwrightRoot, "driver")),
-		"COMIC_DOWNLOADER_WORKSPACE_ROOT="+portableDataRoot,
-		"COMIC_DOWNLOADER_RUNTIME_ROOT="+portableDataRoot,
-		"COMIC_DOWNLOADER_LOG_ROOT="+filepath.Join(portableDataRoot, "logs"),
-		"COMIC_DOWNLOADER_DOWNLOAD_DIR="+defaultEnv("COMIC_DOWNLOADER_DOWNLOAD_DIR", filepath.Join(portableDataRoot, "output")),
-		"COMIC_DOWNLOADER_FRONTEND_STATE_PATH="+defaultEnv("COMIC_DOWNLOADER_FRONTEND_STATE_PATH", filepath.Join(portableDataRoot, "frontend_state.json")),
-		"COMIC_DOWNLOADER_STATE_PATH="+defaultEnv("COMIC_DOWNLOADER_STATE_PATH", filepath.Join(portableDataRoot, "comic_downloader_state.json")),
-	)
+	cmd.Env = portableChildEnvironment(os.Environ(), portableDataRoot, playwrightRoot)
 
 	start := time.Now()
 	if err := cmd.Start(); err != nil {
@@ -118,6 +115,33 @@ func run() error {
 	}
 	log.Printf("portable app exited after %s: %v", time.Since(start).Round(time.Millisecond), errWait)
 	return nil
+}
+
+func portableChildEnvironment(base []string, portableDataRoot, playwrightRoot string) []string {
+	overrides := map[string]string{
+		"PLAYWRIGHT_BROWSERS_PATH":             defaultEnv("PLAYWRIGHT_BROWSERS_PATH", playwrightRoot),
+		"PLAYWRIGHT_DRIVER_PATH":               defaultEnv("PLAYWRIGHT_DRIVER_PATH", filepath.Join(playwrightRoot, "driver")),
+		"COMIC_DOWNLOADER_WORKSPACE_ROOT":      portableDataRoot,
+		"COMIC_DOWNLOADER_RUNTIME_ROOT":        portableDataRoot,
+		"COMIC_DOWNLOADER_LOG_ROOT":            filepath.Join(portableDataRoot, "logs"),
+		"COMIC_DOWNLOADER_DOWNLOAD_DIR":        defaultEnv("COMIC_DOWNLOADER_DOWNLOAD_DIR", filepath.Join(portableDataRoot, "output")),
+		"COMIC_DOWNLOADER_FRONTEND_STATE_PATH": filepath.Join(portableDataRoot, "frontend_state.json"),
+		"COMIC_DOWNLOADER_STATE_PATH":          filepath.Join(portableDataRoot, "comic_downloader_state.json"),
+	}
+	env := make([]string, 0, len(base)+len(overrides))
+	for _, entry := range base {
+		key, _, ok := strings.Cut(entry, "=")
+		if ok {
+			if _, replaced := overrides[strings.ToUpper(key)]; replaced {
+				continue
+			}
+		}
+		env = append(env, entry)
+	}
+	for key, value := range overrides {
+		env = append(env, key+"="+value)
+	}
+	return env
 }
 
 func migratePortableDataRoot(portableDataRoot string) error {
@@ -152,6 +176,10 @@ func unzipPayload(data []byte, dest string) error {
 	}
 	for _, file := range reader.File {
 		target := filepath.Join(dest, filepath.FromSlash(file.Name))
+		relative, err := filepath.Rel(dest, target)
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return fmt.Errorf("zip entry escapes destination: %q", file.Name)
+		}
 		isDir := file.FileInfo().IsDir() || strings.HasSuffix(file.Name, "/") || strings.HasSuffix(file.Name, "\\")
 		log.Printf("extract entry: %s dir=%v target=%s", file.Name, isDir, target)
 		if isDir {
@@ -254,14 +282,64 @@ func copyFile(src, dst string) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	data, err := os.ReadFile(src)
+	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(dst, data, 0o644); err != nil {
+	defer in.Close()
+	temp, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".copy-*")
+	if err != nil {
 		return err
 	}
+	tempPath := temp.Name()
+	committed := false
+	defer func() {
+		_ = temp.Close()
+		if !committed {
+			_ = os.Remove(tempPath)
+		}
+	}()
+	if _, err := io.Copy(temp, in); err != nil {
+		return err
+	}
+	if err := temp.Sync(); err != nil {
+		return err
+	}
+	if err := temp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tempPath, dst); err != nil {
+		if removeErr := os.Remove(dst); removeErr != nil && !os.IsNotExist(removeErr) {
+			return removeErr
+		}
+		if err := os.Rename(tempPath, dst); err != nil {
+			return err
+		}
+	}
+	committed = true
 	return nil
+}
+
+func removeAllWithRetry(path string, attempts int, delay time.Duration) error {
+	if attempts < 1 {
+		attempts = 1
+	}
+	var lastErr error
+	for attempt := 1; attempt <= attempts; attempt++ {
+		if err := os.RemoveAll(path); err != nil {
+			lastErr = err
+		} else if _, err := os.Stat(path); os.IsNotExist(err) {
+			return nil
+		} else if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("path still exists")
+		}
+		if attempt < attempts {
+			time.Sleep(delay)
+		}
+	}
+	return lastErr
 }
 
 func defaultEnv(key, fallback string) string {

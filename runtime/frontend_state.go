@@ -84,7 +84,7 @@ func SaveFrontendState(path string, state FrontendState) error {
 	if err != nil {
 		return fmt.Errorf("marshal frontend state: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := WriteFileAtomic(path, data, 0o644); err != nil {
 		return fmt.Errorf("write frontend state %q: %w", path, err)
 	}
 	return nil

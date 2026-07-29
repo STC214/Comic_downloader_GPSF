@@ -71,7 +71,7 @@ func SaveLegacyComicDownloaderState(path string, state LegacyComicDownloaderStat
 	if err != nil {
 		return fmt.Errorf("marshal legacy comic downloader state: %w", err)
 	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := WriteFileAtomic(path, data, 0o644); err != nil {
 		return fmt.Errorf("write legacy comic downloader state %q: %w", path, err)
 	}
 	return nil

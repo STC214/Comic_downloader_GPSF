@@ -22,7 +22,7 @@ func (l *TodoList) LoadLegacyComicDownloaderHistory(path string) (int, error) {
 		}
 		return 0, err
 	}
-	return l.ImportLegacyComicDownloaderState(state), nil
+	return l.importLegacyComicDownloaderState(state, false), nil
 }
 
 // PreviewLegacyComicDownloaderState reports how many legacy tasks would be added
@@ -50,19 +50,16 @@ func (l *TodoList) PreviewLegacyComicDownloaderState(state projectruntime.Legacy
 
 // ImportLegacyComicDownloaderState merges the current todo list with a snapshot from the old app state file.
 func (l *TodoList) ImportLegacyComicDownloaderState(state projectruntime.LegacyComicDownloaderState) int {
+	return l.importLegacyComicDownloaderState(state, true)
+}
+
+func (l *TodoList) importLegacyComicDownloaderState(state projectruntime.LegacyComicDownloaderState, persistReports bool) int {
 	l.mu.Lock()
-	existingKeys := make(map[string]struct{}, len(l.items))
-	maxSeq := l.seq
-	for _, item := range l.items {
-		existingKeys[legacyHistoryImportKey(item.Request)] = struct{}{}
-		if itemSeq := todoItemSequence(item.ID); itemSeq > maxSeq {
-			maxSeq = itemSeq
-		}
-	}
+	runtimeRoot := strings.TrimSpace(l.runtimeRoot)
 	l.mu.Unlock()
 
-	items := make([]TodoItem, 0, len(state.Tasks))
-	paths := projectruntime.NewPaths(strings.TrimSpace(l.runtimeRoot))
+	candidates := make([]TodoItem, 0, len(state.Tasks))
+	paths := projectruntime.NewPaths(runtimeRoot)
 	for _, legacy := range state.Tasks {
 		item := legacyTaskToTodoItem(legacy)
 		item.Request.DownloadRoot = projectruntime.ResolvePath(paths.Root, item.Request.DownloadRoot)
@@ -72,32 +69,53 @@ func (l *TodoList) ImportLegacyComicDownloaderState(state projectruntime.LegacyC
 		if resolved := resolveImportedLegacyThumbnailPath(paths, item.ID, item.Result.ThumbnailPath); resolved != "" {
 			item.Result.ThumbnailPath = resolved
 		}
+		candidates = append(candidates, item)
+	}
+
+	l.mu.Lock()
+	existingKeys := make(map[string]struct{}, len(l.items)+len(candidates))
+	usedIDs := make(map[string]struct{}, len(l.items)+len(candidates))
+	maxSeq := l.seq
+	for _, item := range l.items {
+		existingKeys[legacyHistoryImportKey(item.Request)] = struct{}{}
+		usedIDs[item.ID] = struct{}{}
+		if itemSeq := todoItemSequence(item.ID); itemSeq > maxSeq {
+			maxSeq = itemSeq
+		}
+	}
+	if state.NextTaskID > 0 && state.NextTaskID-1 > maxSeq {
+		maxSeq = state.NextTaskID - 1
+	}
+	items := make([]TodoItem, 0, len(candidates))
+	for _, item := range candidates {
 		key := legacyHistoryImportKey(item.Request)
 		if _, exists := existingKeys[key]; exists {
 			continue
 		}
+		if _, exists := usedIDs[item.ID]; exists {
+			for {
+				maxSeq++
+				item.ID = fmt.Sprintf("todo-%d", maxSeq)
+				if _, exists := usedIDs[item.ID]; !exists {
+					break
+				}
+			}
+		}
 		existingKeys[key] = struct{}{}
+		usedIDs[item.ID] = struct{}{}
 		items = append(items, item)
 		if itemSeq := todoItemSequence(item.ID); itemSeq > maxSeq {
 			maxSeq = itemSeq
 		}
 	}
-
-	seq := maxSeq
-	if state.NextTaskID > 0 && state.NextTaskID-1 > seq {
-		seq = state.NextTaskID - 1
-	}
-
-	l.mu.Lock()
 	l.items = append(l.items, items...)
-	l.seq = seq
-	runtimeRoot := strings.TrimSpace(l.runtimeRoot)
+	l.seq = maxSeq
 	notifier := l.notifier
 	l.mu.Unlock()
 	if notifier != nil {
 		notifier()
 	}
-	if runtimeRoot != "" {
+	if persistReports && runtimeRoot != "" {
 		for _, item := range items {
 			if err := SaveTaskReport(runtimeRoot, item); err != nil {
 				log.Printf("save imported legacy task report failed: %v", err)
@@ -134,10 +152,10 @@ func (l *TodoList) ExportLegacyComicDownloaderState(concurrency int) projectrunt
 	l.mu.Lock()
 	items := make([]TodoItem, len(l.items))
 	copy(items, l.items)
+	runtimeRoot := strings.TrimSpace(l.runtimeRoot)
 	l.mu.Unlock()
 	tasksOut := make([]projectruntime.LegacyComicDownloaderTask, 0, len(items))
 	maxID := 0
-	runtimeRoot := strings.TrimSpace(l.runtimeRoot)
 	for idx := len(items) - 1; idx >= 0; idx-- {
 		item := items[idx]
 		legacyTask, id := todoItemToLegacyTask(item, len(items)-idx, runtimeRoot)

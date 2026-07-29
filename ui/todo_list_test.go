@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,6 +49,14 @@ func TestTodoListRunImmediatelyCompletesItem(t *testing.T) {
 	reportPath := filepath.Join(runtimeRoot, "tasks", "task-"+item.ID, "report.json")
 	if _, err := os.Stat(reportPath); err != nil {
 		t.Fatalf("saved report not found: %v", err)
+	}
+	logPath := runtime.NewPathsFromRuntimeRoot(runtimeRoot).TaskLogPath(item.ID)
+	logData, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("successful task log not found: %v", err)
+	}
+	if !strings.Contains(string(logData), "State: completed") {
+		t.Fatalf("successful task log does not contain completed state: %s", logData)
 	}
 }
 
@@ -118,7 +128,7 @@ func TestTodoListWaitsForBrowserLockBeforeStarting(t *testing.T) {
 	runtimeRoot := runtime.NewPaths(workspace).Root
 
 	list := NewTodoList()
-	list.AddPending(tasks.BrowserLaunchRequest{URL: "https://example.com"})
+	list.AddPending(tasks.BrowserLaunchRequest{URL: "https://example.com", RuntimeRoot: runtimeRoot})
 
 	release, err := runtime.AcquireBrowserSessionLock(runtimeRoot)
 	if err != nil {
@@ -172,7 +182,7 @@ func TestTodoListStartAllDoesNotCheckBrowserLock(t *testing.T) {
 	runtimeRoot := runtime.NewPaths(workspace).Root
 
 	list := NewTodoList()
-	list.AddPending(tasks.BrowserLaunchRequest{URL: "https://example.com"})
+	list.AddPending(tasks.BrowserLaunchRequest{URL: "https://example.com", RuntimeRoot: runtimeRoot})
 
 	release, err := runtime.AcquireBrowserSessionLock(runtimeRoot)
 	if err != nil {
@@ -273,5 +283,199 @@ func TestTodoListStartAllIncludesRestartableStatuses(t *testing.T) {
 		if item.Status != TodoStatusCompleted {
 			t.Fatalf("item %s status = %q, want completed", id, item.Status)
 		}
+	}
+}
+
+func TestPauseRunningTaskCancelsRunnerAndKeepsPausedState(t *testing.T) {
+	list := NewTodoList()
+	item := list.AddPending(tasks.BrowserLaunchRequest{URL: "https://example.com", RuntimeRoot: t.TempDir()})
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		_, err := list.RunByIDs([]string{item.ID}, func(req tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error) {
+			close(started)
+			<-req.Context.Done()
+			return tasks.BrowserRunResult{}, req.Context.Err()
+		})
+		done <- err
+	}()
+	<-started
+	if changed := list.SetStatusByIDs([]string{item.ID}, TodoStatusPaused, "paused"); changed != 1 {
+		t.Fatalf("SetStatusByIDs() = %d, want 1", changed)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("RunByIDs() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runner was not canceled")
+	}
+	got, ok := list.ItemByID(item.ID)
+	if !ok || got.Status != TodoStatusPaused || got.LastError != "" {
+		t.Fatalf("paused item = %#v, ok=%v", got, ok)
+	}
+}
+
+func TestRemoveRunningTaskCancelsRunner(t *testing.T) {
+	list := NewTodoList()
+	item := list.AddPending(tasks.BrowserLaunchRequest{URL: "https://example.com", RuntimeRoot: t.TempDir()})
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		_, err := list.RunByIDs([]string{item.ID}, func(req tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error) {
+			close(started)
+			<-req.Context.Done()
+			return tasks.BrowserRunResult{}, context.Canceled
+		})
+		done <- err
+	}()
+	<-started
+	if removed := list.RemoveByIDs([]string{item.ID}); removed != 1 {
+		t.Fatalf("RemoveByIDs() = %d, want 1", removed)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("RunByIDs() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runner was not canceled")
+	}
+	if _, ok := list.ItemByID(item.ID); ok {
+		t.Fatal("removed item reappeared")
+	}
+}
+
+func TestPauseTaskWaitingForRunSlotDoesNotStartRunner(t *testing.T) {
+	list := NewTodoList()
+	list.SetConcurrencyLimit(1)
+	first := list.AddPending(tasks.BrowserLaunchRequest{URL: "https://one.example", RuntimeRoot: t.TempDir()})
+	second := list.AddPending(tasks.BrowserLaunchRequest{URL: "https://two.example", RuntimeRoot: t.TempDir()})
+	firstStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := list.RunByIDs([]string{first.ID}, func(req tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error) {
+			close(firstStarted)
+			<-releaseFirst
+			return tasks.BrowserRunResult{URL: req.URL}, nil
+		})
+		firstDone <- err
+	}()
+	<-firstStarted
+
+	secondCalled := make(chan struct{}, 1)
+	secondDone := make(chan error, 1)
+	go func() {
+		_, err := list.RunByIDs([]string{second.ID}, func(req tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error) {
+			secondCalled <- struct{}{}
+			return tasks.BrowserRunResult{URL: req.URL}, nil
+		})
+		secondDone <- err
+	}()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		list.mu.Lock()
+		registered := list.activeRuns[second.ID] != nil
+		list.mu.Unlock()
+		if registered {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("second task did not register its run context")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	list.SetStatusByIDs([]string{second.ID}, TodoStatusPaused, "paused")
+	select {
+	case err := <-secondDone:
+		if err != nil {
+			t.Fatalf("second RunByIDs() error = %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiting task did not stop after pause")
+	}
+	select {
+	case <-secondCalled:
+		t.Fatal("paused waiting task started its runner")
+	default:
+	}
+	close(releaseFirst)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first RunByIDs() error = %v", err)
+	}
+}
+
+func TestStartAllUsesStableTaskIDsWhenItemIsRemoved(t *testing.T) {
+	list := NewTodoList()
+	runtimeRoot := t.TempDir()
+	first := list.AddPending(tasks.BrowserLaunchRequest{URL: "https://one.example", RuntimeRoot: runtimeRoot})
+	second := list.AddPending(tasks.BrowserLaunchRequest{URL: "https://two.example", RuntimeRoot: runtimeRoot})
+	third := list.AddPending(tasks.BrowserLaunchRequest{URL: "https://three.example", RuntimeRoot: runtimeRoot})
+	_ = first
+
+	started := make(chan string, 3)
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	workspace := t.TempDir()
+	go func() {
+		_, err := list.StartAllUnfinishedWithConcurrency(workspace, 1, func(req tasks.BrowserLaunchRequest) (tasks.BrowserRunResult, error) {
+			started <- req.TaskID
+			if req.TaskID == third.ID {
+				<-release
+			}
+			return tasks.BrowserRunResult{URL: req.URL}, nil
+		})
+		done <- err
+	}()
+	if id := <-started; id != third.ID {
+		t.Fatalf("first started ID = %q, want %q", id, third.ID)
+	}
+	if removed := list.RemoveByIDs([]string{second.ID}); removed != 1 {
+		t.Fatalf("RemoveByIDs() = %d, want 1", removed)
+	}
+	close(release)
+	select {
+	case id := <-started:
+		if id != first.ID {
+			t.Fatalf("next started ID = %q, want %q", id, first.ID)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("remaining task did not start")
+	}
+	if err := <-done; err != nil {
+		t.Fatalf("StartAllUnfinishedWithConcurrency() error = %v", err)
+	}
+	select {
+	case id := <-started:
+		t.Fatalf("unexpected extra task started: %s", id)
+	default:
+	}
+}
+
+func TestAttachRunContextCancelsWhenTaskWasPausedBeforeRegistration(t *testing.T) {
+	list := NewTodoList()
+	item := list.AddPending(tasks.BrowserLaunchRequest{URL: "https://example.com"})
+	list.SetStatusByIDs([]string{item.ID}, TodoStatusPaused, "paused")
+	req, cleanup := list.attachRunContext(item.ID, item.Request)
+	defer cleanup()
+	select {
+	case <-req.Context.Done():
+	default:
+		t.Fatal("run context was not canceled for an already-paused task")
+	}
+}
+
+func TestAttachRunContextCancelsWhenTaskWasRemovedBeforeRegistration(t *testing.T) {
+	list := NewTodoList()
+	item := list.AddPending(tasks.BrowserLaunchRequest{URL: "https://example.com"})
+	list.RemoveByIDs([]string{item.ID})
+	req, cleanup := list.attachRunContext(item.ID, item.Request)
+	defer cleanup()
+	select {
+	case <-req.Context.Done():
+	default:
+		t.Fatal("run context was not canceled for a removed task")
 	}
 }

@@ -17,7 +17,7 @@ func main() {
 	url := flag.String("url", "", "url to open")
 	runtimeRoot := flag.String("runtime-root", "runtime", "runtime root")
 	browserPath := flag.String("browser-path", "", "firefox executable path")
-	userDataDir := flag.String("user-data-dir", "", "firefox profile directory")
+	userDataDirFlag := flag.String("user-data-dir", "", "firefox profile directory")
 	headless := flag.Bool("headless", true, "run browser headless")
 	adblock := flag.Bool("adblock", true, "enable adblock flag in middleware")
 	flag.Parse()
@@ -26,7 +26,7 @@ func main() {
 		log.Fatal("missing --url")
 	}
 	manager := projectruntime.NewBrowserProfileManager(*runtimeRoot)
-	userDataDir := strings.TrimSpace(*userDataDir)
+	userDataDir := strings.TrimSpace(*userDataDirFlag)
 	var cleanup func()
 	if userDataDir == "" {
 		profile, err := manager.PrepareFreshPlaywrightProfile(projectruntime.BrowserTypeFirefox)

@@ -519,11 +519,6 @@ func newFrontendApp(workspaceRoot string) *frontendApp {
 		log.Printf("load legacy task history %q failed: %v", legacyPath, err)
 	} else if count > 0 {
 		app.setStatus("loaded %d legacy tasks from %s", count, legacyPath)
-		if err := app.todo.SaveLegacyComicDownloaderState(legacyPath, app.concurrency); err != nil {
-			log.Printf("rewrite legacy task history %q failed: %v", legacyPath, err)
-		} else {
-			log.Printf("rewrote legacy task history with normalized URLs: %s", legacyPath)
-		}
 	}
 	return app
 }
