@@ -50,6 +50,7 @@ const (
 	controlIDInfoEdit       = 2006
 	controlIDStatusText     = 2007
 	controlIDStartTasks     = 2008
+	controlIDVersionText    = 2009
 	controlIDDownloadDir    = 2010
 	controlIDConcurrency    = 2011
 	controlIDAdblockRules   = 2012
@@ -62,6 +63,13 @@ const (
 	msgRefreshBoard  = 0x8004
 	msgRefreshAction = 0x8005
 )
+
+// buildVersion is injected by scripts/build_portable.ps1 using -ldflags -X.
+var buildVersion = "dev"
+
+func buildVersionLabel() string {
+	return "\u7248\u672c " + buildVersion
+}
 
 var (
 	user32   = syscall.NewLazyDLL("user32.dll")
@@ -174,6 +182,7 @@ const (
 	BS_PUSHBUTTON        = 0x00000000
 	BS_AUTOCHECKBOX      = 0x00000003
 	BS_FLAT              = 0x00008000
+	SS_RIGHT             = 0x00000002
 	LBS_NOTIFY           = 0x0001
 	LBS_NOINTEGRALHEIGHT = 0x0100
 	ES_AUTOHSCROLL       = 0x0080
@@ -432,6 +441,7 @@ type frontendApp struct {
 	infoTitle      HWND
 	infoEdit       HWND
 	statusText     HWND
+	versionText    HWND
 
 	taskScrollY     int
 	taskContentH    int
@@ -827,6 +837,7 @@ func (a *frontendApp) createControls(hwnd HWND) {
 		{class: "Static", text: "\u4efb\u52a1\u5217\u8868", style: WS_CHILD | WS_VISIBLE, x: 20, y: 70, w: 120, h: 20, id: controlIDTaskTitle},
 		{class: "TaskBoardControl", text: "", style: WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL, exStyle: WS_EX_CLIENTEDGE, x: 20, y: 88, w: 1240, h: 300, id: controlIDListBox},
 		{class: "Static", text: "ready", style: WS_CHILD | WS_VISIBLE, x: 20, y: 862, w: 1240, h: 24, id: controlIDStatusText},
+		{class: "Static", text: buildVersionLabel(), style: WS_CHILD | WS_VISIBLE | SS_RIGHT, x: 1080, y: 862, w: 180, h: 24, id: controlIDVersionText},
 	}
 
 	for _, c := range def {
@@ -862,6 +873,8 @@ func (a *frontendApp) createControls(hwnd HWND) {
 			a.taskBoard = HWND(hwndChild)
 		case controlIDStatusText:
 			a.statusText = HWND(hwndChild)
+		case controlIDVersionText:
+			a.versionText = HWND(hwndChild)
 		}
 		if c.id == controlIDURLEdit || c.id == controlIDAddTask {
 			setControlFont(HWND(hwndChild), rowFont)
@@ -872,6 +885,7 @@ func (a *frontendApp) createControls(hwnd HWND) {
 	setControlFont(a.taskTitle, uiFont)
 	setControlFont(a.taskBoard, uiFont)
 	setControlFont(a.statusText, uiFont)
+	setControlFont(a.versionText, uiFont)
 	a.updateConcurrencyButton(a.concurrency)
 }
 
@@ -900,11 +914,14 @@ func (a *frontendApp) layout() {
 	setCueBanner(a.urlEdit, "鐠囩柉绶崗銉︽瀬閻?URL")
 	taskTop := int32(72)
 	statusY := height - 34
+	versionW := int32(180)
 	taskBottom := statusY - 10
 	taskH := max32(160, taskBottom-taskTop)
 	move(a.taskTitle, padding, 52, 130, 20)
 	move(a.taskBoard, padding, taskTop, width-padding*2, taskH)
-	move(a.statusText, padding, statusY, width-padding*2, 24)
+	statusW := max32(100, width-padding*2-gap-versionW)
+	move(a.statusText, padding, statusY, statusW, 24)
+	move(a.versionText, padding+statusW+gap, statusY, versionW, 24)
 	taskBoardRefresh(a.taskBoard)
 }
 

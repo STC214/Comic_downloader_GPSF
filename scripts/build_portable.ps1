@@ -93,6 +93,7 @@ $launcherPayloadZip = Join-Path $launcherSourceDir "payload.zip"
 $launcherSysoPath = Join-Path $launcherSourceDir "portable_icon.syso"
 $frontendSysoPath = Join-Path $frontendSourceDir "comic_icon.syso"
 $launcherPayloadPlaceholder = "placeholder payload archive; replaced by scripts/build_portable.ps1 before building the portable exe"
+$buildVersion = Get-Date -Format "yyyyMMdd_HHmm"
 
 Set-Location $repoRoot
 
@@ -106,6 +107,7 @@ Ensure-Dir (Split-Path -Parent $PortableStageRoot)
 Write-Host "Portable exe: $PortableExe"
 Write-Host "Portable stage root: $PortableStageRoot"
 Write-Host "Firefox executable: $FirefoxExecutable"
+Write-Host "Build version: $buildVersion"
 
 if (Test-Path -LiteralPath $PortableStageRoot) {
     Remove-Item -LiteralPath $PortableStageRoot -Recurse -Force
@@ -160,7 +162,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "go test failed"
 }
 
-& go build -tags playwright -ldflags "-H windowsgui" -o (Join-Path $PortableStageRoot "comic_downloader.exe") .\cmd\win32-frontend
+& go build -tags playwright -ldflags "-H windowsgui -X main.buildVersion=$buildVersion" -o (Join-Path $PortableStageRoot "comic_downloader.exe") .\cmd\win32-frontend
 if ($LASTEXITCODE -ne 0) {
     throw "go build failed"
 }
@@ -175,6 +177,7 @@ Comic Downloader Portable Payload
 This directory is packed into the single-file portable launcher.
 
 - Firefox executable: $FirefoxExecutable
+- Build version: $buildVersion
 
 The launcher extracts this payload to a temp directory at runtime.
 "@

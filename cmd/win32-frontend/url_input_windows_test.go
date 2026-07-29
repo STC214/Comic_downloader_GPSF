@@ -10,6 +10,15 @@ import (
 
 var procDestroyWindowForTest = user32.NewProc("DestroyWindow")
 
+func TestBuildVersionLabel(t *testing.T) {
+	original := buildVersion
+	buildVersion = "20260729_1930"
+	t.Cleanup(func() { buildVersion = original })
+	if got, want := buildVersionLabel(), "\u7248\u672c 20260729_1930"; got != want {
+		t.Fatalf("buildVersionLabel() = %q, want %q", got, want)
+	}
+}
+
 func TestSetWindowLongPtrProcNameMatchesArchitecture(t *testing.T) {
 	want := "SetWindowLongW"
 	if unsafe.Sizeof(uintptr(0)) == 8 {
