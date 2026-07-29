@@ -110,7 +110,7 @@ var (
 	procGetScrollPos                            = user32.NewProc("GetScrollPos")
 	procTrackPopupMenu                          = user32.NewProc("TrackPopupMenu")
 	procDestroyMenu                             = user32.NewProc("DestroyMenu")
-	procSetWindowLongPtrW                       = user32.NewProc("SetWindowLongPtrW")
+	procSetWindowLongPtrW                       = user32.NewProc(setWindowLongPtrProcName())
 	procSHBrowseForFolderW                      = shell32.NewProc("SHBrowseForFolderW")
 	procSHGetPathFromIDListW                    = shell32.NewProc("SHGetPathFromIDListW")
 	procShellExecuteW                           = shell32.NewProc("ShellExecuteW")
@@ -141,6 +141,13 @@ var (
 	gclpHIcon   = int32(-14)
 	gclpHIconSm = int32(-34)
 )
+
+func setWindowLongPtrProcName() string {
+	if unsafe.Sizeof(uintptr(0)) == 8 {
+		return "SetWindowLongPtrW"
+	}
+	return "SetWindowLongW"
+}
 
 var (
 	themeOnce      sync.Once
@@ -177,10 +184,21 @@ const (
 
 	WM_CREATE          = 0x0001
 	WM_DESTROY         = 0x0002
+	WM_KILLFOCUS       = 0x0008
+	WM_NCDESTROY       = 0x0082
 	WM_CLOSE           = 0x0010
+	WM_CANCELMODE      = 0x001F
 	WM_SIZE            = 0x0005
+	WM_KEYDOWN         = 0x0100
+	WM_CHAR            = 0x0102
 	WM_LBUTTONDOWN     = 0x0201
+	WM_LBUTTONUP       = 0x0202
+	WM_LBUTTONDBLCLK   = 0x0203
+	WM_RBUTTONDOWN     = 0x0204
 	WM_RBUTTONUP       = 0x0205
+	WM_MBUTTONDOWN     = 0x0207
+	WM_XBUTTONDOWN     = 0x020B
+	WM_MOUSEHWHEEL     = 0x020E
 	WM_CONTEXTMENU     = 0x007B
 	WM_MOUSEWHEEL      = 0x020A
 	WM_GETMINMAXINFO   = 0x0024
@@ -196,7 +214,9 @@ const (
 	WM_CTLCOLORBTN     = 0x0135
 	WM_CTLCOLORDLG     = 0x0136
 	WM_CTLCOLORSTATIC  = 0x0138
+	EM_GETSEL          = 0x00B0
 	EM_SETRECTNP       = 0x00B4
+	EM_SETSEL          = 0x00B1
 	EM_SETCUEBANNER    = 0x1501
 
 	SW_SHOW = 5
@@ -833,6 +853,7 @@ func (a *frontendApp) createControls(hwnd HWND) {
 		switch c.id {
 		case controlIDURLEdit:
 			a.urlEdit = HWND(hwndChild)
+			installURLInputSelection(HWND(hwndChild))
 		case controlIDAddTask:
 			a.addTaskBtn = HWND(hwndChild)
 		case controlIDTaskTitle:
