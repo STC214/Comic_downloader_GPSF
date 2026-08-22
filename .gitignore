@@ -5,6 +5,7 @@ backup_check/
 temp.txt
 portable-run.log
 _tmp_fix_chromium.ps1
+.codex-artifacts/
 
 # Local-only operational notes
 docs/SMOKE_TESTS.md

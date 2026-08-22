@@ -203,6 +203,30 @@ func TestRecoverInterruptedCommitRestoresPreviousOutput(t *testing.T) {
 	}
 }
 
+func TestRecoverInterruptedCommitTreatsOutputTitleLiterally(t *testing.T) {
+	root := t.TempDir()
+	outputDir := filepath.Join(root, "[コモ］スバルくんはおっきくなりたい")
+	backupDir := filepath.Join(root, ".[コモ］スバルくんはおっきくなりたい.previous-crash")
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(backupDir, "existing.txt")
+	if err := os.WriteFile(marker, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := recoverInterruptedCommit(outputDir); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(outputDir, "existing.txt"))
+	if err != nil || string(data) != "keep" {
+		t.Fatalf("recovered marker = %q, err = %v", data, err)
+	}
+	if _, err := os.Stat(backupDir); !os.IsNotExist(err) {
+		t.Fatalf("backup still exists after recovery: %v", err)
+	}
+}
+
 func TestRecoverInterruptedCommitRemovesStaleBackupWhenOutputExists(t *testing.T) {
 	root := t.TempDir()
 	outputDir := filepath.Join(root, "recover")

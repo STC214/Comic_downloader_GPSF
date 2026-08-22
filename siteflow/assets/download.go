@@ -204,9 +204,17 @@ func recoverInterruptedCommit(outputDir string) error {
 	lock.Lock()
 	defer lock.Unlock()
 
-	backups, err := filepath.Glob(filepath.Join(filepath.Dir(outputDir), "."+filepath.Base(outputDir)+".previous-*"))
+	parentDir := filepath.Dir(outputDir)
+	entries, err := os.ReadDir(parentDir)
 	if err != nil {
 		return fmt.Errorf("find interrupted output backups for %q: %w", outputDir, err)
+	}
+	backupPrefix := "." + filepath.Base(outputDir) + ".previous-"
+	backups := make([]string, 0)
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), backupPrefix) {
+			backups = append(backups, filepath.Join(parentDir, entry.Name()))
+		}
 	}
 	if len(backups) == 0 {
 		return nil
